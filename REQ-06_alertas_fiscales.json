@@ -1,0 +1,727 @@
+{
+  "name": "REQ-06 ABGA — Alertas Fiscales Trimestrales",
+  "nodes": [
+    {
+      "id": "trigger-schedule",
+      "name": "Schedule Trigger (Cierre Trimestral)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 15 3,6,9,12 *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1200, 460],
+      "parameters": {}
+    },
+    {
+      "id": "set-periodo",
+      "name": "Calcular Período",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-960, 380],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "year",
+              "name": "year",
+              "type": "string",
+              "value": "={{ $now.year }}"
+            },
+            {
+              "id": "trimestre",
+              "name": "trimestre",
+              "type": "string",
+              "value": "={{ $now.month <= 3 ? 'Q1' : $now.month <= 6 ? 'Q2' : $now.month <= 9 ? 'Q3' : 'Q4' }}"
+            },
+            {
+              "id": "fechaLimite",
+              "name": "fechaLimite",
+              "type": "string",
+              "value": "={{ $now.month <= 3 ? '20 de abril' : $now.month <= 6 ? '20 de julio' : $now.month <= 9 ? '20 de octubre' : '30 de enero' }}"
+            },
+            {
+              "id": "modelo",
+              "name": "modelo",
+              "type": "string",
+              "value": "={{ $now.month <= 3 ? 'Modelo 303 (IVA) + Modelo 111 (Retenciones)' : $now.month <= 6 ? 'Modelo 303 (IVA) + Modelo 111 (Retenciones)' : $now.month <= 9 ? 'Modelo 303 (IVA) + Modelo 111 (Retenciones)' : 'Modelo 303 (IVA) + Modelo 111 (Retenciones) + Modelo 390 (Resumen anual)' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "auth-erp",
+      "name": "Auth apiERP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-720, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://apierp.diezsoftware.com/api/Auth/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"userName\":\"K1970\",\"password\":\"391740\",\"clientId\":\"ASESORIA-BALANCE-GESTION-ADMINISTRATIVA-SLP\",\"clientSecret\":\"PDevg0kcrdtSEiGSrG5YLVTFqOwhiFp1jMRNrc8tO7N0by4aNxsCttpduO8GMlFl\",\"codigoEmpresa\":\"codigoEmpresa\"}",
+        "options": {
+          "retryOnFail": true,
+          "maxTries": 2,
+          "waitBetweenTries": 3000
+        }
+      }
+    },
+    {
+      "id": "auth-con",
+      "name": "Auth apiCON",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-720, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "http://apicon.diezsoftware.com/token",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/x-www-form-urlencoded" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "form",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "grant_type", "value": "password" },
+            { "name": "client_secret", "value": "raG20V1kP2l7JtnakwNaVP73JoLDeYToO85YnzwvTqmyEEQjVUEFwaXCBKLBpvrp" },
+            { "name": "username", "value": "K1970" },
+            { "name": "password", "value": "263618" },
+            { "name": "client_id", "value": "ASESORIA-BALANCE-GESTION-ADMINISTRATIVA-SLP" },
+            { "name": "cod_empresa", "value": "codigoEmpresa" }
+          ]
+        },
+        "options": {
+          "retryOnFail": true,
+          "maxTries": 2,
+          "waitBetweenTries": 3000
+        }
+      }
+    },
+    {
+      "id": "auth-nom",
+      "name": "Auth apiNOM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-720, 620],
+      "parameters": {
+        "method": "POST",
+        "url": "https://apinom.diezsoftware.com/api/auth/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"userName\":\"K1970\",\"password\":\"948162\",\"clientId\":\"ASESORIA-BALANCE-GESTION-ADMINISTRATIVA-SLP\",\"clientSecret\":\"kL4uCHTBuuxCRmjv3C0bAPBAvDComAS2YClvuTERWbiB8IqpD1uwN36JpwuDXju7\",\"codigoEmpresa\":\"codigoEmpresa\"}",
+        "options": {
+          "retryOnFail": true,
+          "maxTries": 2,
+          "waitBetweenTries": 3000
+        }
+      }
+    },
+    {
+      "id": "merge-tokens",
+      "name": "Merge Tokens",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [-480, 460],
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "numberInputs": 3
+      }
+    },
+    {
+      "id": "set-tokens",
+      "name": "Guardar Tokens",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-240, 460],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "erpToken",
+              "name": "erpToken",
+              "type": "string",
+              "value": "={{ $('Auth apiERP').item.json.auth_token }}"
+            },
+            {
+              "id": "conToken",
+              "name": "conToken",
+              "type": "string",
+              "value": "={{ $('Auth apiCON').item.json.access_token }}"
+            },
+            {
+              "id": "nomToken",
+              "name": "nomToken",
+              "type": "string",
+              "value": "={{ $('Auth apiNOM').item.json.auth_token }}"
+            },
+            {
+              "id": "year",
+              "name": "year",
+              "type": "string",
+              "value": "={{ $('Calcular Período').item.json.year }}"
+            },
+            {
+              "id": "trimestre",
+              "name": "trimestre",
+              "type": "string",
+              "value": "={{ $('Calcular Período').item.json.trimestre }}"
+            },
+            {
+              "id": "fechaLimite",
+              "name": "fechaLimite",
+              "type": "string",
+              "value": "={{ $('Calcular Período').item.json.fechaLimite }}"
+            },
+            {
+              "id": "modelo",
+              "name": "modelo",
+              "type": "string",
+              "value": "={{ $('Calcular Período').item.json.modelo }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-companies",
+      "name": "GET Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [0, 460],
+      "parameters": {
+        "method": "GET",
+        "url": "http://apierp.diezsoftware.com/api/Company/getCompanies",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.erpToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "loop-empresas",
+      "name": "Loop por Empresa",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [240, 460],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "get-clientes",
+      "name": "GET Cliente (email)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 340],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://apicon.diezsoftware.com/api/clientes/?$filter=Empresa eq {{ $json.id }}&$orderby=Codigo desc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.conToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "extraer-empresa",
+      "name": "Extraer Datos Empresa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 340],
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nconst empresa = $('Loop por Empresa').item.json;\nconst clientes = Array.isArray(data) ? data : (data.datos || data.value || [data]);\nconst primerCliente = clientes[0] || {};\n\nreturn [{\n  json: {\n    empresaId: empresa.id || empresa.codigo || empresa.Codigo,\n    empresaNombre: empresa.nombre || empresa.Nombre || primerCliente.NombreFiscal || 'Sin nombre',\n    email: primerCliente.Mail || primerCliente.mail || '',\n    cif: primerCliente.CIF || empresa.cif || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "check-email",
+      "name": "¿Tiene email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [960, 340],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-email",
+              "leftValue": "={{ $json.email }}",
+              "operator": {
+                "operation": "notEmpty",
+                "singleValue": true,
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "get-apuntes-iva",
+      "name": "GET Apuntes IVA (cuentas 47x)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Tokens').item.json.year }}' and (startswith(Cuenta,'470') or startswith(Cuenta,'471') or startswith(Cuenta,'472') or startswith(Cuenta,'473') or startswith(Cuenta,'477'))&$top=1000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.conToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "get-apuntes-retenciones",
+      "name": "GET Apuntes Retenciones (cuentas 47500)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 360],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Tokens').item.json.year }}' and (startswith(Cuenta,'475') or startswith(Cuenta,'476'))&$top=500",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.conToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "get-nominas",
+      "name": "GET Total Nóminas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 520],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://apinom.diezsoftware.com/api/Payroll/totalNominas/{{ $('Extraer Datos Empresa').item.json.empresaId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.nomToken }}" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "calcular-fiscal",
+      "name": "Calcular Situación Fiscal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1480, 360],
+      "parameters": {
+        "jsCode": "const empresaData = $('Extraer Datos Empresa').item.json;\nconst apuntesIVARaw = $('GET Apuntes IVA (cuentas 47x)').item.json;\nconst apuntesRetRaw = $('GET Apuntes Retenciones (cuentas 47500)').item.json;\nconst nominasRaw = $('GET Total Nóminas').item.json;\nconst tokens = $('Guardar Tokens').item.json;\n\n// Normalizar arrays\nconst apuntesIVA = Array.isArray(apuntesIVARaw) ? apuntesIVARaw : (apuntesIVARaw.datos || apuntesIVARaw.value || []);\nconst apuntesRet = Array.isArray(apuntesRetRaw) ? apuntesRetRaw : (apuntesRetRaw.datos || apuntesRetRaw.value || []);\n\n// ---- CÁLCULO IVA ----\n// Cuenta 477 = IVA repercutido (ventas) → saldo acreedor (positivo = a ingresar)\n// Cuenta 472 = IVA soportado deducible (compras) → saldo deudor (positivo = a favor)\nconst ivaRepercutido = apuntesIVA\n  .filter(a => String(a.Cuenta || '').startsWith('477'))\n  .reduce((sum, a) => sum + (parseFloat(a.Haber || 0) - parseFloat(a.Debe || 0)), 0);\n\nconst ivaSoportado = apuntesIVA\n  .filter(a => String(a.Cuenta || '').startsWith('472'))\n  .reduce((sum, a) => sum + (parseFloat(a.Debe || 0) - parseFloat(a.Haber || 0)), 0);\n\nconst saldoIVA = ivaRepercutido - ivaSoportado;\nconst ivaAIngresar = saldoIVA > 0 ? saldoIVA : 0;\nconst ivaADevolver = saldoIVA < 0 ? Math.abs(saldoIVA) : 0;\n\n// ---- CÁLCULO RETENCIONES IRPF ----\n// Cuenta 4751 = Hacienda Pública, acreedora por retenciones practicadas\nconst retencionesIRPF = apuntesRet\n  .filter(a => String(a.Cuenta || '').startsWith('4751') || String(a.Cuenta || '').startsWith('475'))\n  .reduce((sum, a) => sum + (parseFloat(a.Haber || 0) - parseFloat(a.Debe || 0)), 0);\n\n// ---- NÓMINAS ----\nconst totalNominas = (() => {\n  if (!nominasRaw || nominasRaw.error) return 0;\n  if (typeof nominasRaw === 'number') return nominasRaw;\n  if (nominasRaw.total) return parseFloat(nominasRaw.total);\n  if (Array.isArray(nominasRaw)) return nominasRaw.reduce((s, n) => s + parseFloat(n.total || n.importe || 0), 0);\n  return 0;\n})();\n\n// ---- ESTIMACIÓN IS (pago fraccionado) ----\n// Solo Q1 y Q3 tienen pago fraccionado (Modelo 202)\nconst trimestre = tokens.trimestre;\nconst tieneModeloIS = trimestre === 'Q1' || trimestre === 'Q3';\nconst baseEstimadaIS = ivaRepercutido * 3.5; // estimación muy conservadora\nconst pagoFraccionadoIS = tieneModeloIS ? (baseEstimadaIS * 0.18).toFixed(2) : 0;\n\n// ---- ALERTAS ----\nconst alertas = [];\nif (ivaAIngresar > 3000) alertas.push({ tipo: 'ALTA', msg: `IVA a ingresar elevado: ${ivaAIngresar.toFixed(2)} EUR — revisar antes del ${tokens.fechaLimite}` });\nif (ivaAIngresar > 0 && ivaAIngresar <= 3000) alertas.push({ tipo: 'NORMAL', msg: `IVA a ingresar: ${ivaAIngresar.toFixed(2)} EUR` });\nif (ivaADevolver > 0) alertas.push({ tipo: 'INFO', msg: `IVA a devolver: ${ivaADevolver.toFixed(2)} EUR — valorar solicitud de devolución` });\nif (retencionesIRPF > 0) alertas.push({ tipo: 'NORMAL', msg: `Retenciones IRPF a ingresar: ${retencionesIRPF.toFixed(2)} EUR` });\nif (tieneModeloIS && parseFloat(pagoFraccionadoIS) > 0) alertas.push({ tipo: 'INFO', msg: `Pago fraccionado IS estimado: ${pagoFraccionadoIS} EUR (Modelo 202)` });\n\n// ---- TOTAL OBLIGACIONES FISCALES ----\nconst totalObligaciones = ivaAIngresar + retencionesIRPF + parseFloat(pagoFraccionadoIS);\n\nreturn [{\n  json: {\n    empresa: empresaData.empresaNombre,\n    cif: empresaData.cif,\n    email: empresaData.email,\n    trimestre,\n    year: tokens.year,\n    fechaLimite: tokens.fechaLimite,\n    modelo: tokens.modelo,\n    ivaRepercutido: ivaRepercutido.toFixed(2),\n    ivaSoportado: ivaSoportado.toFixed(2),\n    saldoIVA: saldoIVA.toFixed(2),\n    ivaAIngresar: ivaAIngresar.toFixed(2),\n    ivaADevolver: ivaADevolver.toFixed(2),\n    retencionesIRPF: retencionesIRPF.toFixed(2),\n    totalNominas: totalNominas.toFixed(2),\n    pagoFraccionadoIS,\n    tieneModeloIS,\n    totalObligaciones: totalObligaciones.toFixed(2),\n    alertas,\n    nivelAlerta: alertas.some(a => a.tipo === 'ALTA') ? 'ALTA' : alertas.length > 0 ? 'MEDIA' : 'BAJA'\n  }\n}];"
+      }
+    },
+    {
+      "id": "agent-alerta",
+      "name": "Agente Alerta Fiscal",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1760, 360],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "Eres un asesor fiscal senior de ABGA Consultores especializado en fiscalidad española de PYMEs. Generas alertas fiscales trimestrales en HTML profesional para enviar por email a clientes de asesoría. Tu output es ÚNICAMENTE HTML puro, sin markdown, sin bloques de código, sin ninguna explicación adicional. El tono es profesional, claro y directo — el cliente debe entender de un vistazo qué debe pagar, cuándo y cuánto.\n\n## ESTRUCTURA OBLIGATORIA DEL EMAIL\n\n### 1. CABECERA\n- Logo textual ABGA CONSULTORES en azul #1a4b8c\n- Subtítulo: \"Alerta Fiscal Trimestral\"\n- Nombre empresa + CIF\n- Período: trimestre y año\n- Fecha límite de presentación en rojo si nivel de alerta es ALTA, naranja si MEDIA\n\n### 2. RESUMEN EJECUTIVO (1 párrafo)\nTexto directo con el total de obligaciones fiscales del trimestre y la fecha límite. Si hay alerta ALTA, usar tono urgente. Si es BAJA, tono informativo tranquilizador.\n\n### 3. TABLA DE OBLIGACIONES FISCALES\nTabla limpia con columnas: Concepto | Importe (EUR) | Modelo | Fecha límite\nFilas obligatorias:\n- IVA repercutido (ventas)\n- IVA soportado deducible (compras)\n- **SALDO IVA NETO** (subtotal destacado — rojo si a ingresar, verde si a devolver)\n- Retenciones IRPF practicadas (Modelo 111)\n- Pago fraccionado IS (Modelo 202, solo si aplica)\n- **TOTAL OBLIGACIONES** (fila final en negrita grande)\n\n### 4. ALERTAS Y AVISOS\nLista de alertas generadas. Cada alerta con icono de texto:\n- 🔴 ALTA: fondo rojo claro #fdecea, texto #c62828\n- 🟡 MEDIA: fondo amarillo claro #fff3cd, texto #856404\n- 🔵 INFO: fondo azul claro #e3f2fd, texto #1565c0\n\n### 5. PRÓXIMOS PASOS\nLista numerada con exactamente 3 acciones concretas que el cliente debe hacer antes de la fecha límite. Basadas en los datos reales — no genéricas.\n\n### 6. PIE DE PÁGINA\nABGA Consultores | Calle Saturnino Calleja 6, 1ºC · 28002 Madrid | 913 788 740 | comunicaciones@abgaconsultores.com\nTexto legal: \"Este documento es una estimación informativa basada en los datos contables registrados en el sistema. ABGA Consultores gestionará la presentación de los modelos correspondientes.\"\n\n## REGLAS CSS\n- Ancho máximo 680px, centrado\n- Fuente Arial, 14px\n- Todos los estilos inline\n- Cabeceras tabla: fondo #1a4b8c, texto blanco\n- Filas alternas: blanco / #f5f8ff\n- Totales: fondo #e8edf5, negrita\n- Importes en formato español: 12.345,67 EUR\n- Números a ingresar: rojo #c62828\n- Números a favor/devolver: verde #2e7d32"
+        }
+      }
+    },
+    {
+      "id": "claude-model",
+      "name": "Claude Sonnet 4",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [1760, 560],
+      "credentials": {
+        "anthropicApi": {
+          "id": "ZLK1U10HmfnpD128",
+          "name": "Team agent"
+        }
+      },
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-20250514"
+        },
+        "options": {
+          "maxTokens": 3000,
+          "temperature": 0.2
+        }
+      }
+    },
+    {
+      "id": "preparar-prompt",
+      "name": "Preparar Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1600, 360],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prompt",
+              "name": "prompt",
+              "type": "string",
+              "value": "=Genera la alerta fiscal trimestral para este cliente de ABGA Consultores.\n\nEMPRESA: {{ $json.empresa }}\nCIF: {{ $json.cif }}\nPERÍODO: {{ $json.trimestre }} {{ $json.year }}\nFECHA LÍMITE PRESENTACIÓN: {{ $json.fechaLimite }}\nMODELOS A PRESENTAR: {{ $json.modelo }}\nNIVEL DE ALERTA: {{ $json.nivelAlerta }}\n\nDATOS FISCALES DEL TRIMESTRE:\n- IVA repercutido (ventas): {{ $json.ivaRepercutido }} EUR\n- IVA soportado deducible (compras): {{ $json.ivaSoportado }} EUR\n- Saldo IVA neto: {{ $json.saldoIVA }} EUR\n- IVA a ingresar: {{ $json.ivaAIngresar }} EUR\n- IVA a devolver: {{ $json.ivaADevolver }} EUR\n- Retenciones IRPF practicadas: {{ $json.retencionesIRPF }} EUR\n- Total nóminas del período: {{ $json.totalNominas }} EUR\n- Pago fraccionado IS estimado: {{ $json.pagoFraccionadoIS }} EUR\n- Aplica Modelo 202 (IS): {{ $json.tieneModeloIS }}\n- TOTAL OBLIGACIONES FISCALES: {{ $json.totalObligaciones }} EUR\n\nALERTAS DETECTADAS:\n{{ $json.alertas.map(a => a.tipo + ': ' + a.msg).join('\\n') }}\n\nGenera el email HTML completo siguiendo exactamente la estructura y reglas definidas."
+            },
+            {
+              "id": "email",
+              "name": "email",
+              "type": "string",
+              "value": "={{ $json.email }}"
+            },
+            {
+              "id": "empresa",
+              "name": "empresa",
+              "type": "string",
+              "value": "={{ $json.empresa }}"
+            },
+            {
+              "id": "trimestre",
+              "name": "trimestre",
+              "type": "string",
+              "value": "={{ $json.trimestre }}"
+            },
+            {
+              "id": "year",
+              "name": "year",
+              "type": "string",
+              "value": "={{ $json.year }}"
+            },
+            {
+              "id": "totalObligaciones",
+              "name": "totalObligaciones",
+              "type": "string",
+              "value": "={{ $json.totalObligaciones }}"
+            },
+            {
+              "id": "nivelAlerta",
+              "name": "nivelAlerta",
+              "type": "string",
+              "value": "={{ $json.nivelAlerta }}"
+            },
+            {
+              "id": "fechaLimite",
+              "name": "fechaLimite",
+              "type": "string",
+              "value": "={{ $json.fechaLimite }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "preparar-email",
+      "name": "Preparar Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1960, 360],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "emailTo",
+              "name": "emailTo",
+              "type": "string",
+              "value": "={{ $('Preparar Prompt').item.json.email }}"
+            },
+            {
+              "id": "emailSubject",
+              "name": "emailSubject",
+              "type": "string",
+              "value": "=⚠ Alerta fiscal {{ $('Preparar Prompt').item.json.trimestre }} {{ $('Preparar Prompt').item.json.year }} — {{ $('Preparar Prompt').item.json.empresa }} — Presentación antes del {{ $('Preparar Prompt').item.json.fechaLimite }}"
+            },
+            {
+              "id": "emailBody",
+              "name": "emailBody",
+              "type": "string",
+              "value": "={{ $json.output }}"
+            },
+            {
+              "id": "empresa",
+              "name": "empresa",
+              "type": "string",
+              "value": "={{ $('Preparar Prompt').item.json.empresa }}"
+            },
+            {
+              "id": "trimestre",
+              "name": "trimestre",
+              "type": "string",
+              "value": "={{ $('Preparar Prompt').item.json.trimestre }}"
+            },
+            {
+              "id": "year",
+              "name": "year",
+              "type": "string",
+              "value": "={{ $('Preparar Prompt').item.json.year }}"
+            },
+            {
+              "id": "totalObligaciones",
+              "name": "totalObligaciones",
+              "type": "string",
+              "value": "={{ $('Preparar Prompt').item.json.totalObligaciones }}"
+            },
+            {
+              "id": "nivelAlerta",
+              "name": "nivelAlerta",
+              "type": "string",
+              "value": "={{ $('Preparar Prompt').item.json.nivelAlerta }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "enviar-email",
+      "name": "Enviar Email (Outlook)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [2200, 360],
+      "continueOnFail": true,
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "pjf6Zx2OeH55DmSj",
+          "name": "Microsoft comunicaciones abgb"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "subject": "={{ $json.emailSubject }}",
+        "bodyContent": "={{ $json.emailBody }}",
+        "bodyContentType": "html",
+        "toRecipients": "={{ $json.emailTo }}",
+        "additionalFields": {
+          "from": "comunicaciones@abgaconsultores.com"
+        }
+      }
+    },
+    {
+      "id": "log-excel",
+      "name": "Log Alerta en Excel",
+      "type": "n8n-nodes-base.microsoftExcel",
+      "typeVersion": 2.2,
+      "position": [2440, 360],
+      "continueOnFail": true,
+      "credentials": {
+        "microsoftExcelOAuth2Api": {
+          "id": "c9sEIzloOWrlt9EB",
+          "name": "Microsoft Excel comunicaciones ABGA"
+        }
+      },
+      "parameters": {
+        "resource": "table",
+        "operation": "append",
+        "workbook": {
+          "__rl": true,
+          "mode": "id",
+          "value": "01MHRQIQU2UYPUI5T7TRGIPRLQFDUUM2DR"
+        },
+        "worksheet": {
+          "__rl": true,
+          "mode": "list",
+          "cachedResultName": "Hoja1",
+          "value": "{00000000-0001-0000-0000-000000000000}"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "cachedResultName": "Tabla2",
+          "value": "{0E59D9A0-8006-4DB7-B161-B834800744DF}"
+        },
+        "fieldsUi": {
+          "values": [
+            { "column": "Empresa", "fieldValue": "={{ $('Preparar Email').item.json.empresa }}" },
+            { "column": "Email", "fieldValue": "={{ $('Preparar Email').item.json.emailTo }}" },
+            { "column": "Trimestre", "fieldValue": "={{ $('Preparar Email').item.json.trimestre }}" },
+            { "column": "Año", "fieldValue": "={{ $('Preparar Email').item.json.year }}" },
+            { "column": "Total Obligaciones EUR", "fieldValue": "={{ $('Preparar Email').item.json.totalObligaciones }}" },
+            { "column": "Nivel Alerta", "fieldValue": "={{ $('Preparar Email').item.json.nivelAlerta }}" },
+            { "column": "Fecha Envío", "fieldValue": "={{ $now.format('dd/MM/yyyy HH:mm') }}" },
+            { "column": "Estado", "fieldValue": "=ENVIADO" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "siguiente-empresa",
+      "name": "Siguiente Empresa",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2680, 360],
+      "parameters": {}
+    },
+    {
+      "id": "skip-sin-email",
+      "name": "Skip — Sin email",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1200, 620],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Cierre Trimestral)": {
+      "main": [[{ "node": "Calcular Período", "type": "main", "index": 0 }]]
+    },
+    "Manual Trigger": {
+      "main": [[{ "node": "Calcular Período", "type": "main", "index": 0 }]]
+    },
+    "Calcular Período": {
+      "main": [[
+        { "node": "Auth apiERP", "type": "main", "index": 0 },
+        { "node": "Auth apiCON", "type": "main", "index": 0 },
+        { "node": "Auth apiNOM", "type": "main", "index": 0 }
+      ]]
+    },
+    "Auth apiERP": {
+      "main": [[{ "node": "Merge Tokens", "type": "main", "index": 0 }]]
+    },
+    "Auth apiCON": {
+      "main": [[{ "node": "Merge Tokens", "type": "main", "index": 1 }]]
+    },
+    "Auth apiNOM": {
+      "main": [[{ "node": "Merge Tokens", "type": "main", "index": 2 }]]
+    },
+    "Merge Tokens": {
+      "main": [[{ "node": "Guardar Tokens", "type": "main", "index": 0 }]]
+    },
+    "Guardar Tokens": {
+      "main": [[{ "node": "GET Companies", "type": "main", "index": 0 }]]
+    },
+    "GET Companies": {
+      "main": [[{ "node": "Loop por Empresa", "type": "main", "index": 0 }]]
+    },
+    "Loop por Empresa": {
+      "main": [
+        [],
+        [{ "node": "GET Cliente (email)", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET Cliente (email)": {
+      "main": [[{ "node": "Extraer Datos Empresa", "type": "main", "index": 0 }]]
+    },
+    "Extraer Datos Empresa": {
+      "main": [[{ "node": "¿Tiene email?", "type": "main", "index": 0 }]]
+    },
+    "¿Tiene email?": {
+      "main": [
+        [
+          { "node": "GET Apuntes IVA (cuentas 47x)", "type": "main", "index": 0 },
+          { "node": "GET Apuntes Retenciones (cuentas 47500)", "type": "main", "index": 0 },
+          { "node": "GET Total Nóminas", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Skip — Sin email", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET Apuntes IVA (cuentas 47x)": {
+      "main": [[{ "node": "Calcular Situación Fiscal", "type": "main", "index": 0 }]]
+    },
+    "GET Apuntes Retenciones (cuentas 47500)": {
+      "main": [[{ "node": "Calcular Situación Fiscal", "type": "main", "index": 0 }]]
+    },
+    "GET Total Nóminas": {
+      "main": [[{ "node": "Calcular Situación Fiscal", "type": "main", "index": 0 }]]
+    },
+    "Calcular Situación Fiscal": {
+      "main": [[{ "node": "Preparar Prompt", "type": "main", "index": 0 }]]
+    },
+    "Preparar Prompt": {
+      "main": [[{ "node": "Agente Alerta Fiscal", "type": "main", "index": 0 }]]
+    },
+    "Claude Sonnet 4": {
+      "ai_languageModel": [[{ "node": "Agente Alerta Fiscal", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Agente Alerta Fiscal": {
+      "main": [[{ "node": "Preparar Email", "type": "main", "index": 0 }]]
+    },
+    "Preparar Email": {
+      "main": [[{ "node": "Enviar Email (Outlook)", "type": "main", "index": 0 }]]
+    },
+    "Enviar Email (Outlook)": {
+      "main": [[{ "node": "Log Alerta en Excel", "type": "main", "index": 0 }]]
+    },
+    "Log Alerta en Excel": {
+      "main": [[{ "node": "Siguiente Empresa", "type": "main", "index": 0 }]]
+    },
+    "Siguiente Empresa": {
+      "main": [[{ "node": "Loop por Empresa", "type": "main", "index": 0 }]]
+    },
+    "Skip — Sin email": {
+      "main": [[{ "node": "Loop por Empresa", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "timezone": "Europe/Madrid"
+  },
+  "meta": {
+    "instanceId": "ABGA-REQ06"
+  }
+}

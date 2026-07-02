@@ -1,0 +1,535 @@
+{
+  "name": "REQ-03 ABGA — Informe Financiero Autodespro",
+  "nodes": [
+    {
+      "id": "trigger-schedule",
+      "name": "Schedule Trigger (Mensual)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1200, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 1 * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1200, 460],
+      "parameters": {}
+    },
+    {
+      "id": "set-periodo",
+      "name": "Calcular Período",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-960, 380],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "year",
+              "name": "year",
+              "type": "string",
+              "value": "={{ $now.year }}"
+            },
+            {
+              "id": "mesActual",
+              "name": "mesActual",
+              "type": "number",
+              "value": "={{ $now.month }}"
+            },
+            {
+              "id": "mesAnterior",
+              "name": "mesAnterior",
+              "type": "number",
+              "value": "={{ $now.month === 1 ? 12 : $now.month - 1 }}"
+            },
+            {
+              "id": "yearMesAnterior",
+              "name": "yearMesAnterior",
+              "type": "string",
+              "value": "={{ $now.month === 1 ? ($now.year - 1).toString() : $now.year.toString() }}"
+            },
+            {
+              "id": "nombreMes",
+              "name": "nombreMes",
+              "type": "string",
+              "value": "={{ ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][$now.month === 1 ? 11 : $now.month - 2] }}"
+            },
+            {
+              "id": "trimestre",
+              "name": "trimestre",
+              "type": "string",
+              "value": "={{ $now.month <= 3 ? 'Q1' : $now.month <= 6 ? 'Q2' : $now.month <= 9 ? 'Q3' : 'Q4' }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "auth-erp",
+      "name": "Auth apiERP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-720, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://apierp.diezsoftware.com/api/Auth/login",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"userName\":\"K1970\",\"password\":\"391740\",\"clientId\":\"ASESORIA-BALANCE-GESTION-ADMINISTRATIVA-SLP\",\"clientSecret\":\"PDevg0kcrdtSEiGSrG5YLVTFqOwhiFp1jMRNrc8tO7N0by4aNxsCttpduO8GMlFl\",\"codigoEmpresa\":\"codigoEmpresa\"}",
+        "options": { "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 3000 }
+      }
+    },
+    {
+      "id": "auth-con",
+      "name": "Auth apiCON",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-720, 460],
+      "parameters": {
+        "method": "POST",
+        "url": "http://apicon.diezsoftware.com/token",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/x-www-form-urlencoded" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "form",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "grant_type", "value": "password" },
+            { "name": "client_secret", "value": "raG20V1kP2l7JtnakwNaVP73JoLDeYToO85YnzwvTqmyEEQjVUEFwaXCBKLBpvrp" },
+            { "name": "username", "value": "K1970" },
+            { "name": "password", "value": "263618" },
+            { "name": "client_id", "value": "ASESORIA-BALANCE-GESTION-ADMINISTRATIVA-SLP" },
+            { "name": "cod_empresa", "value": "codigoEmpresa" }
+          ]
+        },
+        "options": { "retryOnFail": true, "maxTries": 2, "waitBetweenTries": 3000 }
+      }
+    },
+    {
+      "id": "merge-tokens",
+      "name": "Merge Tokens",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [-480, 380],
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition"
+      }
+    },
+    {
+      "id": "set-tokens",
+      "name": "Guardar Tokens",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-240, 380],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "erpToken", "name": "erpToken", "type": "string", "value": "={{ $('Auth apiERP').item.json.auth_token }}" },
+            { "id": "conToken", "name": "conToken", "type": "string", "value": "={{ $('Auth apiCON').item.json.access_token }}" },
+            { "id": "year", "name": "year", "type": "string", "value": "={{ $('Calcular Período').item.json.year }}" },
+            { "id": "mesAnterior", "name": "mesAnterior", "type": "number", "value": "={{ $('Calcular Período').item.json.mesAnterior }}" },
+            { "id": "yearMesAnterior", "name": "yearMesAnterior", "type": "string", "value": "={{ $('Calcular Período').item.json.yearMesAnterior }}" },
+            { "id": "nombreMes", "name": "nombreMes", "type": "string", "value": "={{ $('Calcular Período').item.json.nombreMes }}" },
+            { "id": "trimestre", "name": "trimestre", "type": "string", "value": "={{ $('Calcular Período').item.json.trimestre }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "get-companies",
+      "name": "GET Companies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [0, 380],
+      "parameters": {
+        "method": "GET",
+        "url": "http://apierp.diezsoftware.com/api/Company/getCompanies",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.erpToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "loop-empresas",
+      "name": "Loop por Empresa",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [240, 380],
+      "parameters": { "batchSize": 1, "options": {} }
+    },
+    {
+      "id": "get-clientes",
+      "name": "GET Cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 260],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://apicon.diezsoftware.com/api/clientes/?$filter=Empresa eq {{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.conToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "extraer-empresa",
+      "name": "Extraer Datos Empresa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 260],
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nconst empresa = $('Loop por Empresa').item.json;\nconst clientes = Array.isArray(data) ? data : (data.datos || data.value || [data]);\nconst c = clientes[0] || {};\nreturn [{ json: {\n  empresaId: empresa.id || empresa.codigo || empresa.Codigo,\n  empresaNombre: empresa.nombre || empresa.Nombre || c.NombreFiscal || 'Sin nombre',\n  email: c.Mail || c.mail || '',\n  cif: c.CIF || empresa.cif || '',\n  direccion: c.Direccion || '',\n  provincia: c.Provincia || 'Madrid'\n}}];"
+      }
+    },
+    {
+      "id": "check-email",
+      "name": "¿Tiene email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [960, 260],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-email",
+              "leftValue": "={{ $json.email }}",
+              "operator": { "operation": "notEmpty", "singleValue": true, "type": "string" },
+              "rightValue": ""
+            }
+          ],
+          "options": { "caseSensitive": false, "typeValidation": "strict", "version": 2 }
+        }
+      }
+    },
+    {
+      "id": "get-subcuentas",
+      "name": "GET Subcuentas (Plan de Cuentas)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 120],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://apicon.diezsoftware.com/api/subcuentas/?$filter=Ejercicio eq '{{ $('Guardar Tokens').item.json.year }}'&$select=Codigo,Descripcion,Saldo,Debe,Haber&$top=500",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.conToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "get-facturas",
+      "name": "GET Facturas del Año",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 280],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://apicon.diezsoftware.com/api/facturas/?$filter=Ejercicio eq '{{ $('Guardar Tokens').item.json.year }}'&$orderby=Fecha desc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.conToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "get-apuntes",
+      "name": "GET Apuntes del Año",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 440],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Tokens').item.json.year }}'&$top=1000&$orderby=Fecha desc",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $('Guardar Tokens').item.json.conToken }}" },
+            { "name": "Accept", "value": "application/json" },
+            { "name": "Accept-Encoding", "value": "gzip" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "calcular-financiero",
+      "name": "Calcular Estados Financieros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1480, 280],
+      "parameters": {
+        "jsCode": "const empresa = $('Extraer Datos Empresa').item.json;\nconst subcuentasRaw = $('GET Subcuentas (Plan de Cuentas)').item.json;\nconst facturasRaw = $('GET Facturas del Año').item.json;\nconst apuntesRaw = $('GET Apuntes del Año').item.json;\nconst tokens = $('Guardar Tokens').item.json;\n\nconst subcuentas = Array.isArray(subcuentasRaw) ? subcuentasRaw : (subcuentasRaw.datos || subcuentasRaw.value || []);\nconst facturas = Array.isArray(facturasRaw) ? facturasRaw : (facturasRaw.datos || facturasRaw.value || []);\nconst apuntes = Array.isArray(apuntesRaw) ? apuntesRaw : (apuntesRaw.datos || apuntesRaw.value || []);\n\n// Función para obtener saldo de un grupo de cuentas por prefijo\nconst saldoGrupo = (prefijos) => {\n  return subcuentas\n    .filter(s => prefijos.some(p => String(s.Codigo || '').startsWith(p)))\n    .reduce((sum, s) => sum + (parseFloat(s.Saldo || 0)), 0);\n};\n\nconst debeGrupo = (prefijos) => subcuentas\n  .filter(s => prefijos.some(p => String(s.Codigo || '').startsWith(p)))\n  .reduce((sum, s) => sum + parseFloat(s.Debe || 0), 0);\n\nconst haberGrupo = (prefijos) => subcuentas\n  .filter(s => prefijos.some(p => String(s.Codigo || '').startsWith(p)))\n  .reduce((sum, s) => sum + parseFloat(s.Haber || 0), 0);\n\n// ========== CUENTA DE RESULTADOS (PyG) ==========\n// Grupo 7: Ingresos\nconst ventasServicios = Math.abs(saldoGrupo(['700','701','702','703','704','705']));\nconst otrosIngresos = Math.abs(saldoGrupo(['706','708','709','740','747','75']));\nconst ingresosFinancieros = Math.abs(saldoGrupo(['76']));\nconst totalIngresos = ventasServicios + otrosIngresos;\n\n// Grupo 6: Gastos\nconst aprovisionamientos = Math.abs(saldoGrupo(['60','61']));\nconst gastosPersonal = Math.abs(saldoGrupo(['64']));\nconst otrosGastosExplotacion = Math.abs(saldoGrupo(['62','63','65','68']));\nconst amortizaciones = Math.abs(saldoGrupo(['68']));\nconst gastosFinancieros = Math.abs(saldoGrupo(['66']));\nconst totalGastos = aprovisionamientos + gastosPersonal + otrosGastosExplotacion;\n\nconst ebit = totalIngresos - totalGastos;\nconst resultadoAntesImpuestos = ebit + ingresosFinancieros - gastosFinancieros;\nconst impuestoSociedades = resultadoAntesImpuestos > 0 ? resultadoAntesImpuestos * 0.25 : 0;\nconst resultadoNeto = resultadoAntesImpuestos - impuestoSociedades;\n\nconst margenNeto = totalIngresos > 0 ? ((resultadoNeto / totalIngresos) * 100).toFixed(1) : 0;\nconst ratioGastos = totalIngresos > 0 ? ((totalGastos / totalIngresos) * 100).toFixed(1) : 0;\nconst ebitda = ebit + amortizaciones;\nconst margenEBITDA = totalIngresos > 0 ? ((ebitda / totalIngresos) * 100).toFixed(1) : 0;\n\n// ========== BALANCE DE SITUACIÓN ==========\n// ACTIVO\nconst inmovilizadoMaterial = Math.abs(saldoGrupo(['21','22','23']));\nconst inmovilizadoIntangible = Math.abs(saldoGrupo(['20']));\nconst inversionesFinancieras = Math.abs(saldoGrupo(['25','26']));\nconst activoNoCorriente = inmovilizadoMaterial + inmovilizadoIntangible + inversionesFinancieras;\n\nconst existencias = Math.abs(saldoGrupo(['30','31','32','33','34','35']));\nconst clientes = Math.abs(saldoGrupo(['430','431','432','433','440','441']));\nconst otrosDeudores = Math.abs(saldoGrupo(['44','46','47','48']));\nconst tesoreria = Math.abs(saldoGrupo(['57']));\nconst activoCorriente = existencias + clientes + otrosDeudores + tesoreria;\nconst totalActivo = activoNoCorriente + activoCorriente;\n\n// PASIVO + PATRIMONIO NETO\nconst capitalSocial = Math.abs(saldoGrupo(['10','11','12']));\nconst reservas = Math.abs(saldoGrupo(['11']));\nconst resultadoEjercicio = resultadoNeto;\nconst patrimonioNeto = capitalSocial + reservas + resultadoEjercicio;\n\nconst deudasLargoPlazo = Math.abs(saldoGrupo(['15','16','17','18']));\nconst proveedores = Math.abs(saldoGrupo(['40','41']));\nconst acreedores = Math.abs(saldoGrupo(['41','43','46']));\nconst deudasCortoPlazo = Math.abs(saldoGrupo(['52','53','55']));\nconst aapp = Math.abs(saldoGrupo(['47']));\nconst pasivoCorriente = proveedores + acreedores + deudasCortoPlazo + aapp;\nconst totalPasivo = deudasLargoPlazo + pasivoCorriente + patrimonioNeto;\n\n// ========== RATIOS ==========\nconst liquidez = pasivoCorriente > 0 ? (activoCorriente / pasivoCorriente).toFixed(2) : 'N/A';\nconst endeudamiento = totalActivo > 0 ? (((deudasLargoPlazo + pasivoCorriente) / totalActivo) * 100).toFixed(1) : 'N/A';\nconst rotacionActivo = totalActivo > 0 ? (totalIngresos / totalActivo).toFixed(2) : 'N/A';\nconst rentabilidadEconomica = totalActivo > 0 ? ((ebit / totalActivo) * 100).toFixed(1) : 'N/A';\nconst rentabilidadFinanciera = patrimonioNeto > 0 ? ((resultadoNeto / patrimonioNeto) * 100).toFixed(1) : 'N/A';\nconst fondoManiobra = (activoCorriente - pasivoCorriente).toFixed(2);\n\n// ========== EVOLUCIÓN MENSUAL (facturas) ==========\nconst facturasPorMes = {};\nfacturas.forEach(f => {\n  const fecha = f.Fecha || '';\n  const mes = fecha.substring(5, 7);\n  if (!mes) return;\n  if (!facturasPorMes[mes]) facturasPorMes[mes] = { ingresos: 0, gastos: 0 };\n  const importe = parseFloat(f.TotalFactura || 0);\n  if (f.TipoAsiento === 1 || f.TipoFactura === 1) facturasPorMes[mes].ingresos += importe;\n  else facturasPorMes[mes].gastos += importe;\n});\n\nconst evolucion = Object.entries(facturasPorMes)\n  .sort(([a], [b]) => a.localeCompare(b))\n  .map(([mes, datos]) => ({\n    mes: ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][parseInt(mes) - 1] || mes,\n    ingresos: datos.ingresos.toFixed(2),\n    gastos: datos.gastos.toFixed(2),\n    resultado: (datos.ingresos - datos.gastos).toFixed(2)\n  }));\n\nconst fmt = (n) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EUR';\n\nreturn [{ json: {\n  empresa: empresa.empresaNombre,\n  cif: empresa.cif,\n  email: empresa.email,\n  direccion: empresa.direccion,\n  provincia: empresa.provincia,\n  nombreMes: tokens.nombreMes,\n  year: tokens.year,\n  trimestre: tokens.trimestre,\n  // PyG\n  ventasServicios: fmt(ventasServicios),\n  otrosIngresos: fmt(otrosIngresos),\n  totalIngresos: fmt(totalIngresos),\n  aprovisionamientos: fmt(aprovisionamientos),\n  gastosPersonal: fmt(gastosPersonal),\n  otrosGastosExplotacion: fmt(otrosGastosExplotacion),\n  amortizaciones: fmt(amortizaciones),\n  totalGastos: fmt(totalGastos),\n  ebit: fmt(ebit),\n  ebitda: fmt(ebitda),\n  ingresosFinancieros: fmt(ingresosFinancieros),\n  gastosFinancieros: fmt(gastosFinancieros),\n  resultadoAntesImpuestos: fmt(resultadoAntesImpuestos),\n  impuestoSociedades: fmt(impuestoSociedades),\n  resultadoNeto: fmt(resultadoNeto),\n  margenNeto,\n  margenEBITDA,\n  ratioGastos,\n  // Balance\n  inmovilizadoMaterial: fmt(inmovilizadoMaterial),\n  inmovilizadoIntangible: fmt(inmovilizadoIntangible),\n  inversionesFinancieras: fmt(inversionesFinancieras),\n  activoNoCorriente: fmt(activoNoCorriente),\n  existencias: fmt(existencias),\n  clientes: fmt(clientes),\n  otrosDeudores: fmt(otrosDeudores),\n  tesoreria: fmt(tesoreria),\n  activoCorriente: fmt(activoCorriente),\n  totalActivo: fmt(totalActivo),\n  capitalSocial: fmt(capitalSocial),\n  patrimonioNeto: fmt(patrimonioNeto),\n  deudasLargoPlazo: fmt(deudasLargoPlazo),\n  proveedores: fmt(proveedores),\n  pasivoCorriente: fmt(pasivoCorriente),\n  totalPasivo: fmt(totalPasivo),\n  // Ratios\n  liquidez,\n  endeudamiento,\n  rotacionActivo,\n  rentabilidadEconomica,\n  rentabilidadFinanciera,\n  fondoManiobra: fmt(parseFloat(fondoManiobra)),\n  // Evolución\n  evolucion: JSON.stringify(evolucion),\n  // Raw para prompt\n  totalIngresosRaw: totalIngresos,\n  resultadoNetoRaw: resultadoNeto\n}}];"
+      }
+    },
+    {
+      "id": "agent-informe",
+      "name": "Agente Informe Autodespro",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1960, 280],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Genera el informe financiero completo estilo Autodespro para este cliente de ABGA Consultores.\n\nEMPRESA: {{ $json.empresa }}\nCIF: {{ $json.cif }}\nDIRECCIÓN: {{ $json.direccion }}, {{ $json.provincia }}\nPERÍODO: Acumulado enero — {{ $json.nombreMes }} {{ $json.year }} ({{ $json.trimestre }})\nFECHA INFORME: {{ $now.format('dd/MM/yyyy') }}\n\n== CUENTA DE PÉRDIDAS Y GANANCIAS ==\nVentas y servicios: {{ $json.ventasServicios }}\nOtros ingresos: {{ $json.otrosIngresos }}\nTOTAL INGRESOS: {{ $json.totalIngresos }}\nAprovisionamientos: {{ $json.aprovisionamientos }}\nGastos de personal: {{ $json.gastosPersonal }}\nOtros gastos explotación: {{ $json.otrosGastosExplotacion }}\nAmortizaciones: {{ $json.amortizaciones }}\nTOTAL GASTOS: {{ $json.totalGastos }}\nEBIT (Resultado explotación): {{ $json.ebit }}\nEBITDA: {{ $json.ebitda }}\nIngresos financieros: {{ $json.ingresosFinancieros }}\nGastos financieros: {{ $json.gastosFinancieros }}\nResultado antes impuestos: {{ $json.resultadoAntesImpuestos }}\nImpuesto Sociedades (25%): {{ $json.impuestoSociedades }}\nRESULTADO NETO: {{ $json.resultadoNeto }}\n\n== BALANCE DE SITUACIÓN ==\nACTIVO NO CORRIENTE:\n  Inmovilizado material: {{ $json.inmovilizadoMaterial }}\n  Inmovilizado intangible: {{ $json.inmovilizadoIntangible }}\n  Inversiones financieras LP: {{ $json.inversionesFinancieras }}\n  TOTAL ACTIVO NO CORRIENTE: {{ $json.activoNoCorriente }}\nACTIVO CORRIENTE:\n  Existencias: {{ $json.existencias }}\n  Clientes y deudores: {{ $json.clientes }}\n  Otros deudores: {{ $json.otrosDeudores }}\n  Tesorería: {{ $json.tesoreria }}\n  TOTAL ACTIVO CORRIENTE: {{ $json.activoCorriente }}\nTOTAL ACTIVO: {{ $json.totalActivo }}\n\nPATRIMONIO NETO:\n  Capital y reservas: {{ $json.capitalSocial }}\n  Resultado del ejercicio: {{ $json.resultadoNeto }}\n  TOTAL PATRIMONIO NETO: {{ $json.patrimonioNeto }}\nPASIVO NO CORRIENTE:\n  Deudas largo plazo: {{ $json.deudasLargoPlazo }}\nPASIVO CORRIENTE:\n  Proveedores: {{ $json.proveedores }}\n  Pasivo corriente total: {{ $json.pasivoCorriente }}\nTOTAL PASIVO + PN: {{ $json.totalPasivo }}\n\n== RATIOS CLAVE ==\nMargen neto: {{ $json.margenNeto }}%\nMargen EBITDA: {{ $json.margenEBITDA }}%\nRatio de gastos: {{ $json.ratioGastos }}%\nLiquidez: {{ $json.liquidez }}\nEndeudamiento: {{ $json.endeudamiento }}%\nRentabilidad económica (ROA): {{ $json.rentabilidadEconomica }}%\nRentabilidad financiera (ROE): {{ $json.rentabilidadFinanciera }}%\nFondo de maniobra: {{ $json.fondoManiobra }}\n\n== EVOLUCIÓN MENSUAL ==\n{{ $json.evolucion }}\n\nGenera el informe HTML completo siguiendo exactamente la estructura y reglas definidas en tus instrucciones.",
+        "options": {
+          "systemMessage": "Eres un asesor financiero senior de ABGA Consultores especializado en la elaboración de informes financieros para clientes de asesoría contable. Generas informes estilo Autodespro: profesionales, visuales y fáciles de entender por el cliente no financiero. Tu output es ÚNICAMENTE HTML puro listo para PDF/email, sin markdown, sin bloques de código, sin explicaciones.\n\n## ESTRUCTURA OBLIGATORIA DEL INFORME AUTODESPRO\n\n### PORTADA\n- Cabecera con logo textual ABGA CONSULTORES (azul #1a4b8c, bold, 24px) a la izquierda\n- A la derecha: \"INFORME FINANCIERO\" en gris #666, 18px\n- Línea separadora azul de 3px\n- Bloque datos empresa: nombre en bold 20px, CIF, dirección\n- Período del informe en azul: \"Acumulado enero — [mes] [año]\"\n- Fecha de emisión en gris pequeño\n- Segunda línea separadora\n\n### 1. RESUMEN EJECUTIVO\nCaja con fondo azul claro #e8f0fe, borde izquierdo 4px azul #1a4b8c.\nTítulo \"RESUMEN EJECUTIVO\" en azul bold.\nPárrafo de 4-5 líneas con análisis real de los datos:\n- Valoración general del período\n- Dato más destacado positivo\n- Área de atención o mejora\n- Perspectiva para el siguiente período\nTono profesional y cercano — como si el asesor hablara directamente al empresario.\n\n### 2. CUENTA DE PÉRDIDAS Y GANANCIAS\nTítulo de sección con línea azul decorativa.\nTabla completa PGC con 3 columnas: Concepto | Importe (EUR) | % s/Ventas\nEstructura exacta:\n- INGRESOS DE EXPLOTACIÓN (cabecera azul)\n  · Ventas y prestaciones de servicios\n  · Otros ingresos de explotación\n  → TOTAL INGRESOS NETOS (subtotal, fondo #e8edf5, bold)\n- GASTOS DE EXPLOTACIÓN (cabecera azul)\n  · Aprovisionamientos\n  · Gastos de personal\n  · Otros gastos de explotación\n  · Amortizaciones y deterioros\n  → TOTAL GASTOS EXPLOTACIÓN (subtotal, fondo #e8edf5, bold)\n- → EBITDA (fondo #fff3cd, bold)\n- Amortizaciones (negativo)\n- → EBIT / Resultado de explotación (fondo #e8edf5, bold)\n- Ingresos financieros\n- Gastos financieros\n- → RESULTADO ANTES DE IMPUESTOS (fondo #e8edf5, bold)\n- Impuesto sobre Sociedades (25%)\n- → RESULTADO NETO DEL EJERCICIO (fondo #1a4b8c, texto blanco, bold, 15px)\n\n### 3. BALANCE DE SITUACIÓN\nDos tablas en paralelo (dos columnas lado a lado, cada una 48% de ancho).\nTabla izquierda — ACTIVO:\n- Activo no corriente (con subfilas)\n- Activo corriente (con subfilas)\n- TOTAL ACTIVO (fondo azul oscuro, texto blanco)\nTabla derecha — PASIVO + PN:\n- Patrimonio neto (con subfilas)\n- Pasivo no corriente\n- Pasivo corriente (con subfilas)\n- TOTAL PASIVO + PN (fondo azul oscuro, texto blanco)\nNota al pie en cursiva pequeña: \"Datos estimados a partir de los saldos contables registrados en el sistema a la fecha de emisión.\"\n\n### 4. RATIOS E INDICADORES CLAVE\nGrid de 3 columnas con 6 tarjetas (cards).\nCada tarjeta:\n- Título del ratio en gris pequeño\n- Valor numérico grande y bold (verde si favorable, rojo si alerta, azul si neutro)\n- Descripción breve de qué mide\n- Barra de progreso visual simple (CSS inline)\nRatios: Margen Neto, Margen EBITDA, Ratio Gastos, Liquidez, Endeudamiento, ROE\nCriterios semáforo:\n  · Margen neto > 10% → verde | 5-10% → naranja | < 5% → rojo\n  · Liquidez > 1.5 → verde | 1-1.5 → naranja | < 1 → rojo\n  · Endeudamiento < 50% → verde | 50-70% → naranja | > 70% → rojo\n\n### 5. EVOLUCIÓN MENSUAL\nTabla de evolución con columnas: Mes | Ingresos | Gastos | Resultado\nFila de resultado: verde si positivo, rojo si negativo.\nAl final una fila de TOTALES en bold.\n\n### 6. ANÁLISIS Y RECOMENDACIONES\nTítulo de sección.\nExactamente 4 puntos numerados. Cada uno:\n- Título en bold azul (área: Rentabilidad / Liquidez / Gastos / Fiscalidad / Tesorería...)\n- Observación basada en los datos reales del informe (no genérica)\n- Acción recomendada concreta\nSi los datos muestran resultado negativo, el primer punto debe abordar urgentemente las medidas a tomar.\n\n### 7. PIE DE PÁGINA\nSeparador. Dos columnas:\nIzquierda: ABGA CONSULTORES | Calle Saturnino Calleja 6, 1ºC | 28002 Madrid | 913 788 740\nDerecha: comunicaciones@abgaconsultores.com | www.abgaconsultores.com | Asesoría contable y fiscal desde 1995\nTexto legal centrado pequeño: \"Informe elaborado con datos del sistema contable a la fecha indicada. Este documento tiene carácter informativo. ABGA Consultores no se responsabiliza de decisiones tomadas únicamente en base a este informe.\"\n\n## REGLAS CSS\n- Máx 750px, centrado, margin: 0 auto, padding: 20px\n- Fuente: Arial, Helvetica, sans-serif, 13px base\n- TODOS los estilos inline (sin <style> ni <head>)\n- Tablas: border-collapse collapse, bordes 1px #e0e0e0\n- Cabeceras tabla: fondo #1a4b8c, texto blanco, padding 8px 12px, font-size 12px\n- Filas alternas: blanco y #f9fbff\n- Subtotales: fondo #e8edf5, bold\n- Números negativos: color #c62828\n- Números positivos destacados: color #2e7d32\n- Importes: formato español (12.345,67 EUR)\n- Si dato es 0: mostrar — en lugar de 0,00 EUR\n- Secciones separadas por margin-bottom: 28px\n- Títulos sección: color #1a4b8c, font-size 15px, border-bottom: 2px solid #1a4b8c, padding-bottom: 6px, margin-bottom: 12px"
+        }
+      }
+    },
+    {
+      "id": "claude-model",
+      "name": "Claude Sonnet 4",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [1960, 480],
+      "credentials": {
+        "anthropicApi": {
+          "id": "ZLK1U10HmfnpD128",
+          "name": "Team agent"
+        }
+      },
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-20250514"
+        },
+        "options": {
+          "maxTokens": 6000,
+          "temperature": 0.2
+        }
+      }
+    },
+    {
+      "id": "preparar-email",
+      "name": "Preparar Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2200, 280],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "emailTo", "name": "emailTo", "type": "string", "value": "={{ $('Calcular Estados Financieros').item.json.email }}" },
+            { "id": "emailSubject", "name": "emailSubject", "type": "string", "value": "=Informe financiero {{ $('Calcular Estados Financieros').item.json.empresa }} — {{ $('Calcular Estados Financieros').item.json.nombreMes }} {{ $('Calcular Estados Financieros').item.json.year }}" },
+            { "id": "emailBody", "name": "emailBody", "type": "string", "value": "={{ $json.output }}" },
+            { "id": "empresa", "name": "empresa", "type": "string", "value": "={{ $('Calcular Estados Financieros').item.json.empresa }}" },
+            { "id": "mes", "name": "mes", "type": "string", "value": "={{ $('Calcular Estados Financieros').item.json.nombreMes }}" },
+            { "id": "year", "name": "year", "type": "string", "value": "={{ $('Calcular Estados Financieros').item.json.year }}" },
+            { "id": "resultadoNeto", "name": "resultadoNeto", "type": "string", "value": "={{ $('Calcular Estados Financieros').item.json.resultadoNeto }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "enviar-email",
+      "name": "Enviar Email (Outlook)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [2440, 280],
+      "continueOnFail": true,
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "pjf6Zx2OeH55DmSj",
+          "name": "Microsoft comunicaciones abgb"
+        }
+      },
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "subject": "={{ $json.emailSubject }}",
+        "bodyContent": "={{ $json.emailBody }}",
+        "bodyContentType": "html",
+        "toRecipients": "={{ $json.emailTo }}",
+        "additionalFields": {
+          "from": "comunicaciones@abgaconsultores.com"
+        }
+      }
+    },
+    {
+      "id": "log-excel",
+      "name": "Log en Excel",
+      "type": "n8n-nodes-base.microsoftExcel",
+      "typeVersion": 2.2,
+      "position": [2680, 280],
+      "continueOnFail": true,
+      "credentials": {
+        "microsoftExcelOAuth2Api": {
+          "id": "c9sEIzloOWrlt9EB",
+          "name": "Microsoft Excel comunicaciones ABGA"
+        }
+      },
+      "parameters": {
+        "resource": "table",
+        "operation": "append",
+        "workbook": { "__rl": true, "mode": "id", "value": "01MHRQIQU2UYPUI5T7TRGIPRLQFDUUM2DR" },
+        "worksheet": { "__rl": true, "mode": "list", "cachedResultName": "Hoja1", "value": "{00000000-0001-0000-0000-000000000000}" },
+        "table": { "__rl": true, "mode": "list", "cachedResultName": "Tabla2", "value": "{0E59D9A0-8006-4DB7-B161-B834800744DF}" },
+        "fieldsUi": {
+          "values": [
+            { "column": "Empresa", "fieldValue": "={{ $('Preparar Email').item.json.empresa }}" },
+            { "column": "Email", "fieldValue": "={{ $('Preparar Email').item.json.emailTo }}" },
+            { "column": "Mes", "fieldValue": "={{ $('Preparar Email').item.json.mes }}" },
+            { "column": "Año", "fieldValue": "={{ $('Preparar Email').item.json.year }}" },
+            { "column": "Resultado Neto", "fieldValue": "={{ $('Preparar Email').item.json.resultadoNeto }}" },
+            { "column": "Fecha Envío", "fieldValue": "={{ $now.format('dd/MM/yyyy HH:mm') }}" },
+            { "column": "Estado", "fieldValue": "=ENVIADO" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "siguiente-empresa",
+      "name": "Siguiente Empresa",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2920, 280],
+      "parameters": {}
+    },
+    {
+      "id": "skip-sin-email",
+      "name": "Skip — Sin email",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1200, 600],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Mensual)": {
+      "main": [[{ "node": "Calcular Período", "type": "main", "index": 0 }]]
+    },
+    "Manual Trigger": {
+      "main": [[{ "node": "Calcular Período", "type": "main", "index": 0 }]]
+    },
+    "Calcular Período": {
+      "main": [[
+        { "node": "Auth apiERP", "type": "main", "index": 0 },
+        { "node": "Auth apiCON", "type": "main", "index": 0 }
+      ]]
+    },
+    "Auth apiERP": {
+      "main": [[{ "node": "Merge Tokens", "type": "main", "index": 0 }]]
+    },
+    "Auth apiCON": {
+      "main": [[{ "node": "Merge Tokens", "type": "main", "index": 1 }]]
+    },
+    "Merge Tokens": {
+      "main": [[{ "node": "Guardar Tokens", "type": "main", "index": 0 }]]
+    },
+    "Guardar Tokens": {
+      "main": [[{ "node": "GET Companies", "type": "main", "index": 0 }]]
+    },
+    "GET Companies": {
+      "main": [[{ "node": "Loop por Empresa", "type": "main", "index": 0 }]]
+    },
+    "Loop por Empresa": {
+      "main": [
+        [],
+        [{ "node": "GET Cliente", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET Cliente": {
+      "main": [[{ "node": "Extraer Datos Empresa", "type": "main", "index": 0 }]]
+    },
+    "Extraer Datos Empresa": {
+      "main": [[{ "node": "¿Tiene email?", "type": "main", "index": 0 }]]
+    },
+    "¿Tiene email?": {
+      "main": [
+        [
+          { "node": "GET Subcuentas (Plan de Cuentas)", "type": "main", "index": 0 },
+          { "node": "GET Facturas del Año", "type": "main", "index": 0 },
+          { "node": "GET Apuntes del Año", "type": "main", "index": 0 }
+        ],
+        [{ "node": "Skip — Sin email", "type": "main", "index": 0 }]
+      ]
+    },
+    "GET Subcuentas (Plan de Cuentas)": {
+      "main": [[{ "node": "Calcular Estados Financieros", "type": "main", "index": 0 }]]
+    },
+    "GET Facturas del Año": {
+      "main": [[{ "node": "Calcular Estados Financieros", "type": "main", "index": 0 }]]
+    },
+    "GET Apuntes del Año": {
+      "main": [[{ "node": "Calcular Estados Financieros", "type": "main", "index": 0 }]]
+    },
+    "Calcular Estados Financieros": {
+      "main": [[{ "node": "Agente Informe Autodespro", "type": "main", "index": 0 }]]
+    },
+    "Claude Sonnet 4": {
+      "ai_languageModel": [[{ "node": "Agente Informe Autodespro", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Agente Informe Autodespro": {
+      "main": [[{ "node": "Preparar Email", "type": "main", "index": 0 }]]
+    },
+    "Preparar Email": {
+      "main": [[{ "node": "Enviar Email (Outlook)", "type": "main", "index": 0 }]]
+    },
+    "Enviar Email (Outlook)": {
+      "main": [[{ "node": "Log en Excel", "type": "main", "index": 0 }]]
+    },
+    "Log en Excel": {
+      "main": [[{ "node": "Siguiente Empresa", "type": "main", "index": 0 }]]
+    },
+    "Siguiente Empresa": {
+      "main": [[{ "node": "Loop por Empresa", "type": "main", "index": 0 }]]
+    },
+    "Skip — Sin email": {
+      "main": [[{ "node": "Loop por Empresa", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "timezone": "Europe/Madrid"
+  },
+  "meta": {
+    "instanceId": "ABGA-REQ03"
+  }
+}
