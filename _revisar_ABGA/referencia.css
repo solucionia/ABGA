@@ -1,9 +1,0 @@
-
-  body { margin:0; }
-  a { color:#185FA5; }
-  a:hover { color:#123d6e; }
-  ::selection { background:#185FA5; color:#fff; }
-  @keyframes fadeInUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
-  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration:0.001ms !important; animation-duration:0.001ms !important; } }

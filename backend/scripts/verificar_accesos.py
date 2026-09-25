@@ -59,13 +59,28 @@ def main() -> int:
 
     print("\n2) sesión de ABGA (el interno)")
     admin = httpx.Client(base_url=BASE, timeout=60)
-    r = admin.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": clave_admin()})
+    r = admin.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": clave_admin(),
+                                       "cod_empresa": "6091"})
     check(r.status_code == 200, "ABGA entra", f"{r.status_code}")
     if r.status_code != 200:
         return 1
+    check(r.json().get("cod_empresa") == "6091" and bool(r.json().get("empresa")),
+          "el acceso devuelve con qué empresa se abre y su nombre",
+          f"{r.json().get('cod_empresa')} · {r.json().get('empresa')}")
     check(admin.get("/api/interno/usuarios").status_code == 200, "el panel interno responde")
     check(anon.get("/api/interno/usuarios").status_code == 401,
           "el panel interno NO responde sin sesión")
+
+    print("\n2b) el número de empresa es parte del acceso")
+    r = anon.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": clave_admin()})
+    check(r.status_code == 400, "sin número de empresa no se entra", f"{r.status_code}")
+    check("empresa" in (r.json().get("error") or "").lower(), "y el aviso lo dice", r.json().get("error"))
+    r = anon.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": clave_admin(),
+                                      "cod_empresa": "999999"})
+    check(r.status_code == 404, "un número que no está en la asesoría se rechaza", f"{r.status_code}")
+    r = anon.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": "no-es-la-clave",
+                                      "cod_empresa": "6091"})
+    check(r.status_code == 401, "la contraseña mala gana al número de empresa", f"{r.status_code}")
 
     print("\n3) el alta no se abre sin PIN")
     r = anon.post("/api/registro", json={"email": CORREO, "password": "clave-de-prueba-2026",
@@ -103,6 +118,16 @@ def main() -> int:
     yo = cliente.get("/api/yo").json()["usuario"]
     check(yo["empresas"] == [EMPRESA], "sólo ve su empresa")
 
+    print("\n5b) el cliente no puede entrar con el número de otra empresa")
+    otro = httpx.Client(base_url=BASE, timeout=60)
+    r = otro.post("/api/login", json={"email": CORREO, "password": "clave-de-prueba-2026",
+                                      "cod_empresa": EMPRESA_OTRA})
+    check(r.status_code == 403, "con el código de otra empresa, 403", f"{r.status_code}")
+    r = otro.post("/api/login", json={"email": CORREO, "password": "clave-de-prueba-2026",
+                                      "cod_empresa": EMPRESA})
+    check(r.status_code == 200 and r.json().get("cod_empresa") == EMPRESA,
+          "con su código entra y se abre su empresa", f"{r.status_code}")
+
     print("\n6) el cliente ve lo suyo y no lo ajeno")
     r = cliente.post("/api/informe", json={"modulo": "pyg", "cod_empresa": EMPRESA, "year": 2025})
     check(r.status_code == 200 and (r.json().get("html") or "").startswith("<div"),
@@ -119,9 +144,11 @@ def main() -> int:
     r = anon.post("/api/registro", json={"email": CORREO, "password": "otra-clave-larga-2026",
                                          "cod_empresa": EMPRESA, "pin": pin})
     check(r.status_code == 409, "el segundo alta con el mismo correo se rechaza", f"{r.status_code}")
-    r = anon.post("/api/login", json={"email": CORREO, "password": "otra-clave-larga-2026"})
+    r = anon.post("/api/login", json={"email": CORREO, "password": "otra-clave-larga-2026",
+                                      "cod_empresa": EMPRESA})
     check(r.status_code == 401, "...y la cuenta no ha cambiado de contraseña", f"{r.status_code}")
-    r = anon.post("/api/login", json={"email": CORREO, "password": "clave-de-prueba-2026"})
+    r = anon.post("/api/login", json={"email": CORREO, "password": "clave-de-prueba-2026",
+                                      "cod_empresa": EMPRESA})
     check(r.status_code == 200, "...y el dueño sigue entrando con la suya", f"{r.status_code}")
 
     print("\n8) el PIN no se puede adivinar a base de intentos")
@@ -153,7 +180,8 @@ def main() -> int:
     print("\n11) limpieza (lo que ha creado la prueba se borra)")
     r = admin.post("/api/interno/usuarios/eliminar", json={"email": CORREO})
     check(r.status_code == 200, "usuario de prueba eliminado", f"{r.status_code}")
-    check(anon.post("/api/login", json={"email": CORREO, "password": "clave-de-prueba-2026"}
+    check(anon.post("/api/login", json={"email": CORREO, "password": "clave-de-prueba-2026",
+                                        "cod_empresa": EMPRESA}
                     ).status_code == 401, "y ya no puede entrar")
     check(admin.post("/api/interno/usuarios/eliminar", json={"email": CORREO}).status_code == 404,
           "eliminarlo otra vez da 404")

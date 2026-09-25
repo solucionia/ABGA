@@ -37,8 +37,8 @@ def cli() -> httpx.Client:
     return httpx.Client(timeout=600.0)
 
 
-def login(c: httpx.Client, email: str, password: str) -> dict:
-    r = c.post(f"{BASE}/api/login", json={"email": email, "password": password})
+def login(c: httpx.Client, email: str, password: str, cod_empresa: str = "6091") -> dict:
+    r = c.post(f"{BASE}/api/login", json={"email": email, "password": password, "cod_empresa": cod_empresa})
     return r.json()
 
 

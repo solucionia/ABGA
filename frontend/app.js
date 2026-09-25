@@ -36,8 +36,8 @@ async function api(ruta, opciones = {}) {
 
 /* ============================ sesión ============================ */
 
-async function entrar(email, password) {
-  const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+async function entrar(email, password, codEmpresa) {
+  const r = await api('/api/login', { method: 'POST', body: JSON.stringify({ email, password, cod_empresa: codEmpresa }) });
   if (r.status !== 'ok') {
     const c = document.querySelector('.registro');
     if (c) { c.textContent = '⚠ ' + (r.error || 'No se pudo entrar'); c.classList.add('error'); }
@@ -45,6 +45,8 @@ async function entrar(email, password) {
   }
   estado.token = r.token;
   localStorage.setItem('abga_token', r.token);
+  // el número de empresa entra en el acceso: se abre esa y no otra
+  estado.empresa = r.cod_empresa || '';
   const reg = document.querySelector('.registro');
   if (reg) { reg.classList.remove('error'); reg.textContent = 'Acceso restringido · Cada usuario ve únicamente sus empresas'; }
   await arrancar();
@@ -491,8 +493,15 @@ const nivel = (e) => {
 /* ============================ eventos ============================ */
 
 document.addEventListener('DOMContentLoaded', () => {
-  $('form-login').addEventListener('submit', (e) => { e.preventDefault(); entrar($('login-email').value.trim(), $('login-password').value); });
-  $('btn-rol-cliente').addEventListener('click', () => { $('login-email').value = 'cliente@mbdommo.com'; $('login-password').value = 'demo2025'; });
+  $('form-login').addEventListener('submit', (e) => {
+    e.preventDefault();
+    entrar($('login-email').value.trim(), $('login-password').value, $('login-empresa').value.trim());
+  });
+  $('btn-rol-cliente').addEventListener('click', () => {
+    $('login-email').value = 'cliente@mbdommo.com';
+    $('login-password').value = 'demo2025';
+    $('login-empresa').value = '6091';
+  });
   $('btn-rol-interno').addEventListener('click', () => { $('login-email').value = 'admin@abgaconsultores.com'; $('login-password').focus(); });
   $('btn-salir').addEventListener('click', () => salir());
   $('btn-cerrar-banner').addEventListener('click', () => $('banner-usuario').hidden = true);

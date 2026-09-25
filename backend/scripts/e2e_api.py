@@ -41,8 +41,9 @@ def check(cond: bool, texto: str, detalle: str = "") -> None:
         FALLOS.append(texto)
 
 
-def login(cli: httpx.Client, email: str, password: str) -> str:
-    r = cli.post(f"{BASE}/api/login", json={"email": email, "password": password})
+def login(cli: httpx.Client, email: str, password: str, cod_empresa: str = "6091") -> str:
+    """Entra al portal. El número de empresa forma parte del acceso (indica qué datos se abren)."""
+    r = cli.post(f"{BASE}/api/login", json={"email": email, "password": password, "cod_empresa": cod_empresa})
     j = r.json()
     return j.get("token") or ""
 
@@ -57,10 +58,17 @@ def main() -> None:
         check("ABGA" in cli.get(f"{BASE}/").text, "el HTML del portal carga")
 
         print("\n=== autenticación ===")
-        check(cli.post(f"{BASE}/api/login", json={"email": "cliente@mbdommo.com", "password": "mala"}).status_code == 401,
+        check(cli.post(f"{BASE}/api/login", json={"email": "cliente@mbdommo.com", "password": "mala",
+                                                  "cod_empresa": "6091"}).status_code == 401,
               "una contraseña incorrecta NO entra")
-        check(cli.post(f"{BASE}/api/login", json={"email": "nadie@x.com", "password": "x"}).status_code == 401,
+        check(cli.post(f"{BASE}/api/login", json={"email": "nadie@x.com", "password": "x",
+                                                  "cod_empresa": "6091"}).status_code == 401,
               "un usuario inexistente NO entra")
+        check(cli.post(f"{BASE}/api/login", json={"email": "cliente@mbdommo.com", "password": "demo2025"}
+                       ).status_code == 400, "sin número de empresa NO entra")
+        check(cli.post(f"{BASE}/api/login", json={"email": "cliente@mbdommo.com", "password": "demo2025",
+                                                  "cod_empresa": "999999"}).status_code == 404,
+              "con un número que no existe NO entra")
         check(cli.get(f"{BASE}/api/dashboard", params={"cod_empresa": "6091", "year": 2025}).status_code == 401,
               "sin sesión no hay datos")
 
@@ -78,7 +86,8 @@ def main() -> None:
         check(codigos == ["6091"], "el cliente sólo ve su empresa", str(codigos))
         r = cli.get(f"{BASE}/api/empresas", headers=h_int).json()
         codigos_int = sorted(e["cod_empresa"] for e in r.get("empresas", []))
-        check(codigos_int == ["1092", "6091"], "el interno ve todas las empresas", str(codigos_int))
+        check({"1092", "6091"} <= set(codigos_int) and len(codigos_int) > len(codigos),
+              "el interno ve todas las empresas", f"{len(codigos_int)} frente a {len(codigos)} del cliente")
 
         r = cli.post(f"{BASE}/api/informe", headers=h_cli, json={"modulo": "fiscal", "cod_empresa": "1092", "year": 2025})
         check(r.status_code == 403, "el cliente no puede pedir datos de otra empresa", f"HTTP {r.status_code}")
@@ -87,8 +96,8 @@ def main() -> None:
         r = cli.post(f"{BASE}/api/informe", headers=h_cli, json={"modulo": "duplicados", "cod_empresa": "6091", "year": 2025})
         check(r.status_code == 403, "los informes internos no salen para el cliente", f"HTTP {r.status_code}")
         mods = [m["nombre"] for m in cli.get(f"{BASE}/api/modulos", headers=h_cli).json().get("modulos", [])]
-        check("conciliacion" not in mods and "duplicados" not in mods,
-              "el catálogo del cliente no ofrece los informes internos", str(mods))
+        check("duplicados" not in mods, "el catálogo del cliente no ofrece los informes internos", str(mods))
+        check("conciliacion" in mods, "pero la conciliación sí (la ve el cliente)", str(mods))
         r = cli.post(f"{BASE}/api/informe", headers=h_int, json={"modulo": "conciliacion", "cod_empresa": "6091", "year": 2025})
         check(r.status_code == 200, "el interno sí genera los informes internos", f"HTTP {r.status_code}")
 

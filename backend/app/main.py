@@ -89,15 +89,40 @@ def _empresa_permitida(us: dict[str, Any], cod_empresa: str) -> str:
 
 @app.post("/api/login")
 def login(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Acceso al portal.
+
+    El **número de empresa** forma parte del acceso, no es un filtro posterior: el cliente entra con
+    su código y se abre directamente su panel. Se comprueba contra lo que ese usuario puede ver, de
+    modo que un código no sirve para mirar los datos de otra empresa.
+    """
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
+    cod_empresa = str(payload.get("cod_empresa") or "").strip()
     token, us, error = auth.autenticar(email, password)
     if not token:
         return JSONResponse({"status": "error", "error": error}, status_code=401)
-    db.registrar_ejecucion(cod_empresa="", ejercicio=None, modulos="login", origen="portal",
+
+    if not cod_empresa:
+        return JSONResponse({"status": "error", "error": "Falta el número de empresa."}, status_code=400)
+
+    todas = db.listar_empresas()
+    if cod_empresa not in {e["cod_empresa"] for e in todas}:
+        return JSONResponse(
+            {"status": "error", "error": f"La empresa {cod_empresa} no está en la asesoría."},
+            status_code=404,
+        )
+    if cod_empresa not in db.empresas_de(email):
+        return JSONResponse(
+            {"status": "error", "error": "Tu usuario no tiene acceso a esa empresa."},
+            status_code=403,
+        )
+
+    nombre = next((e["nombre"] for e in todas if e["cod_empresa"] == cod_empresa), "")
+    db.registrar_ejecucion(cod_empresa=cod_empresa, ejercicio=None, modulos="login", origen="portal",
                            email=email, segundos=0.0, estado="ok", desde_cache=False,
-                           detalle=f"rol={us['rol']}")
-    respuesta = JSONResponse({"status": "ok", "token": token, "usuario": us})
+                           detalle=f"rol={us['rol']} · empresa={cod_empresa}")
+    respuesta = JSONResponse({"status": "ok", "token": token, "usuario": us,
+                              "cod_empresa": cod_empresa, "empresa": nombre})
     respuesta.set_cookie("sesion", token, httponly=True, samesite="lax", max_age=60 * 60 * 8)
     return respuesta
 

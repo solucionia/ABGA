@@ -149,9 +149,22 @@ def main() -> int:
         anon = httpx.Client(base_url=BASE, timeout=30)
         check(anon.get("/").status_code == 200, "el panel se sirve")
         check(anon.get("/api/yo").status_code == 401, "sin sesión, todo exige credencial")
+        # El acceso pide el número de empresa y no se abre ninguno que no exista, así que la prueba
+        # crea el suyo (una base recién creada no tiene ninguno).
+        con.execute("INSERT INTO empresas (cod_empresa, nombre, ejercicio_inicio) VALUES (%s, %s, %s) "
+                    "ON CONFLICT (cod_empresa) DO NOTHING", ("6091", "Empresa de prueba", 2024))
+        con.commit()
         r = anon.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": CLAVE_INTERNO})
+        check(r.status_code == 400, "sin número de empresa no se entra", f"{r.status_code}")
+        r = anon.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": CLAVE_INTERNO,
+                                          "cod_empresa": "999999"})
+        check(r.status_code == 404, "con un número inexistente tampoco", f"{r.status_code}")
+        r = anon.post("/api/login", json={"email": "admin@abgaconsultores.com", "password": CLAVE_INTERNO,
+                                          "cod_empresa": "6091"})
         check(r.status_code == 200, "se entra con el interno del entorno", f"{r.status_code}")
         check(r.status_code == 200 and r.json()["usuario"]["rol"] == "interno", "y es el rol interno")
+        check(r.status_code == 200 and r.json().get("cod_empresa") == "6091",
+              "el acceso dice con qué empresa se abre", str(r.json().get("cod_empresa")) if r.status_code == 200 else "")
         check(anon.get("/api/empresas").status_code == 200, "el listado de empresas responde (vacío)")
         check(anon.get("/api/modulos").status_code == 200, "el catálogo de informes responde")
 
