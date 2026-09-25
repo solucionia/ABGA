@@ -1,0 +1,26 @@
+# Lo que NO entra en la imagen. Lo más importante: los datos de cliente y los secretos.
+.venv/
+.env
+.env.*
+!.env.example
+
+# Datos reales (apuntes del ERP, caché, informes generados, mocks con datos de cliente)
+data/
+fixtures/
+salidas/
+mock/
+correo/
+
+# Referencia del sistema antiguo (los JS extraídos de n8n): no se usa en tiempo de ejecución
+legacy/
+_revisar_ABGA/
+
+# Ruido
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.bundle

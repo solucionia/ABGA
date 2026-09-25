@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ABGA Consultores · Portal financiero</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+
+  <!-- ======================================================================
+       LOGIN  (vista inicial. Queda oculta al entrar en la aplicación)
+       El controlador puede ocultar #vista-login y mostrar #vista-app.
+       ====================================================================== -->
+  <section id="vista-login" class="vista visible" data-vista="login" aria-label="Acceso">
+    <div class="pantalla-login">
+      <div class="tarjeta-login" role="form" aria-label="Formulario de acceso">
+        <div class="kickert">ABGA Consultores</div>
+        <h1>Portal financiero</h1>
+
+        <form id="form-login" novalidate>
+          <div class="grupo">
+            <label for="login-email">Correo electrónico</label>
+            <input id="login-email" class="input" type="email" name="email" autocomplete="username" placeholder="tu@empresa.com" required>
+          </div>
+          <div class="grupo">
+            <label for="login-password">Contraseña</label>
+            <input id="login-password" class="input" type="password" name="password" autocomplete="current-password" required>
+          </div>
+          <button id="btn-entrar" class="boton principal completo lg" type="submit">Entrar</button>
+        </form>
+
+        <p class="registro">Acceso restringido · Cada usuario ve únicamente sus empresas</p>
+
+        <div class="demo">
+          <div class="demo-titulo">Modo de demostración</div>
+          <div class="roles">
+            <button id="btn-rol-cliente" class="boton-rol activo" type="button">Cliente</button>
+            <button id="btn-rol-interno" class="boton-rol inactivo" type="button">Interno ABGA</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================================
+       APLICACIÓN  (oculta mientras se está en el login)
+       ====================================================================== -->
+  <div id="vista-app" class="vista" data-vista="app">
+
+    <!-- Cabecera: marca + subtítulo + usuario/rol + botón Salir -->
+    <header class="cabecera">
+      <div class="cabecera-marca">
+        <span class="marca" id="cabecera-marca">ABGA Consultores</span>
+        <span class="separador">·</span>
+        <span class="subtitulo" id="cabecera-subtitulo">Portal financiero</span>
+      </div>
+      <div class="cabecera-acciones">
+        <span class="cabecera-usuario" id="cabecera-usuario"><!-- nombre · rol --></span>
+        <button id="btn-salir" class="boton-salir" type="button">Salir</button>
+      </div>
+    </header>
+
+    <!-- Pestañas -->
+    <nav class="pestanas" role="tablist" aria-label="Vistas del portal">
+      <button id="tab-panel"    class="pestana activa" role="tab" aria-selected="true"  data-tab="panel"    type="button">Panel</button>
+      <button id="tab-informes" class="pestana"        role="tab" aria-selected="false" data-tab="informes" type="button">Informes</button>
+      <button id="tab-interno"  class="pestana"        role="tab" aria-selected="false" data-tab="interno"  type="button">Interno ABGA</button>
+    </nav>
+
+    <main class="contenedor">
+
+      <!-- ======================================================================
+           VISTA PANEL
+           ====================================================================== -->
+      <section id="vista-panel" class="vista visible" data-vista="panel" aria-label="Panel">
+
+        <!-- Selectores Empresa / Ejercicio -->
+        <div class="selectores">
+          <div class="campo">
+            <label for="select-empresa">Empresa</label>
+            <select id="select-empresa" class="select-control" aria-label="Seleccionar empresa"><!-- opciones --></select>
+          </div>
+          <div class="campo">
+            <label for="select-ejercicio">Ejercicio</label>
+            <select id="select-ejercicio" class="select-control mini" aria-label="Seleccionar ejercicio"><!-- opciones --></select>
+          </div>
+        </div>
+        <p id="ejercicio-en-curso" class="nota" hidden>Ejercicio en curso: los datos son parciales hasta el cierre del año.</p>
+
+        <!-- Tarjeta de avisos -->
+        <div id="avisos" class="avisos" hidden>
+          <!-- El controlador inyecta .aviso con .punto.info / .punto.aviso -->
+        </div>
+
+        <!-- Tarjetas KPI -->
+        <div id="kpi-grid" class="kpis" aria-label="Indicadores clave">
+          <!-- El controlador inyecta .kpi con .etiqueta/.valor/.variacion -->
+        </div>
+
+        <!-- Contenedores de gráficas (rejilla de 2) -->
+        <div class="graficas">
+          <div class="tarjeta" id="grafica-mensual" aria-label="Ingresos y gastos por mes">
+            <div class="cabecera-tarjeta">
+              <h3>Ingresos y gastos por mes</h3>
+              <div class="leyenda" id="legenda-mensual"><!-- leyenda --></div>
+            </div>
+            <svg id="svg-mensual" class="grafica" role="img" aria-label="Gráfica mensual"><!-- barras --></svg>
+            <p class="insight" id="insight-mensual"></p>
+            <div id="datos-mensual" class="tabla-scroll" hidden><!-- tabla de datos expandida --></div>
+          </div>
+
+          <div class="tarjeta" id="grafica-linea" aria-label="Resultado acumulado y tesorería">
+            <div class="cabecera-tarjeta">
+              <h3>Resultado acumulado y tesorería</h3>
+              <div class="leyenda" id="legenda-linea"><!-- leyenda --></div>
+            </div>
+            <svg id="svg-linea" class="grafica" role="img" aria-label="Gráfica de líneas"><!-- líneas --></svg>
+            <p class="insight" id="insight-linea"></p>
+            <div id="datos-linea" class="tabla-scroll" hidden><!-- tabla de datos expandida --></div>
+          </div>
+
+          <div class="tarjeta" id="grafica-comparativa" aria-label="Comparativa interanual">
+            <div class="cabecera-tarjeta">
+              <h3>Comparativa interanual</h3>
+              <div class="leyenda" id="legenda-comparativa"><!-- leyenda --></div>
+            </div>
+            <svg id="svg-comparativa" class="grafica" role="img" aria-label="Gráfica comparativa"><!-- barras --></svg>
+            <p class="insight" id="insight-comparativa"></p>
+            <div id="datos-comparativa" class="tabla-scroll" hidden><!-- tabla de datos expandida --></div>
+          </div>
+
+          <div class="tarjeta" id="grafica-gastos" aria-label="Dónde se va el dinero">
+            <div class="cabecera-tarjeta">
+              <h3>Dónde se va el dinero</h3>
+            </div>
+            <svg id="svg-gastos" class="grafica" role="img" aria-label="Gráfica de gastos"><!-- barras horizontales --></svg>
+            <p class="insight" id="insight-gastos"></p>
+            <div id="datos-gastos" class="tabla-scroll" hidden><!-- tabla de datos expandida --></div>
+          </div>
+        </div>
+
+        <!-- Clientes y proveedores -->
+        <div class="tarjeta" id="tarjeta-terceros" aria-label="Clientes y proveedores">
+          <div class="cabecera-tarjeta">
+            <h3>Clientes y proveedores</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="filtro-terceros" class="input sm" type="text" placeholder="Buscar tercero…" aria-label="Buscar tercero">
+              <button id="btn-export-terceros" class="boton secundario" type="button">Exportar CSV</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+            <table id="tabla-terceros" class="tabla-datos"><thead></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+        <!-- Cierre del ejercicio -->
+        <div class="tarjeta" id="tarjeta-cierre" aria-label="Cierre del ejercicio">
+          <div class="cabecera-tarjeta">
+            <h3>Cierre del ejercicio</h3>
+            <button id="btn-export-cierre" class="boton secundario" type="button">Exportar CSV</button>
+          </div>
+          <div class="tabla-scroll">
+            <table id="tabla-cierre" class="tabla-datos"><thead></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ======================================================================
+           VISTA INFORMES
+           ====================================================================== -->
+      <section id="vista-informes" class="vista" data-vista="informes" aria-label="Informes">
+
+        <!-- Visor de informe (visible con un módulo seleccionado) -->
+        <div id="informe-visor" class="visor-informe" hidden>
+          <div class="cabecera">
+            <div>
+              <span id="informe-chip-tipo" class="chip-tipo"><!-- Cliente / Uso interno ABGA --></span>
+              <h2 id="informe-titulo"><!-- título del módulo --></h2>
+            </div>
+            <div class="acciones">
+              <button id="btn-informe-actualizar" class="boton principal" type="button">Actualizar</button>
+              <button id="btn-informe-excel" class="boton secundario" type="button">Excel</button>
+              <button id="btn-informe-imprimir" class="boton secundario" type="button">Imprimir</button>
+              <button id="btn-informe-cerrar" class="boton secundario" type="button">Cerrar</button>
+            </div>
+          </div>
+
+          <div id="informe-parametros" class="parametros"><!-- campos de parámetros --></div>
+
+          <div id="informe-contenido">
+            <div id="informe-loading" class="loading" hidden>
+              <div class="spinner"></div>
+              Generando informe…
+            </div>
+            <div id="informe-resultado"><!-- HTML del informe --></div>
+          </div>
+        </div>
+
+        <!-- Rejilla de módulos, agrupada por menú (Panel / Fiscal y contable / Impuestos / Herramientas) -->
+        <div id="listado-modulos" class="modulos-envoltorio" aria-label="Módulos de informes">
+          <!-- El controlador inyecta, por menú, una rejilla .modulos con tarjetas .modulo -->
+        </div>
+
+      </section>
+
+      <!-- ======================================================================
+           VISTA INTERNO ABGA
+           ====================================================================== -->
+      <section id="vista-interno" class="vista" data-vista="interno" aria-label="Interno ABGA">
+
+        <!-- Últimas ejecuciones -->
+        <div class="tarjeta" id="tarjeta-ejecuciones" aria-label="Últimas ejecuciones">
+          <h3>Últimas ejecuciones</h3>
+          <div class="tabla-scroll">
+            <table id="tabla-ejecuciones" class="tabla-datos"><thead></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+        <!-- Caché de apuntes -->
+        <div class="tarjeta" id="tarjeta-cache" aria-label="Caché de apuntes">
+          <div class="cabecera-tarjeta">
+            <h3>Caché de apuntes</h3>
+            <div style="display:flex;gap:8px;">
+              <button id="btn-refrescar-cache" class="boton principal" type="button">Actualizar desde el ERP</button>
+              <button id="btn-borrar-cache" class="boton secundario" type="button">Borrar caché</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+            <table id="tabla-cache" class="tabla-datos"><thead></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+        <!-- Trabajos en curso -->
+        <div class="tarjeta" id="tarjeta-trabajos" aria-label="Trabajos en curso">
+          <h3>Trabajos en curso</h3>
+          <div id="trabajos-lista" class="progreso-lista"><!-- .progreso-item con .progreso-pista/.progreso-relleno --></div>
+        </div>
+
+        <!-- Estado de los módulos -->
+        <div class="tarjeta" id="tarjeta-estado-modulos" aria-label="Estado de los módulos">
+          <h3>Estado de los módulos</h3>
+          <div class="tabla-scroll">
+            <table id="tabla-estado-modulos" class="tabla-datos"><thead></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+        <!-- Empresas -->
+        <div class="tarjeta" id="tarjeta-empresas" aria-label="Empresas">
+          <h3>Empresas</h3>
+          <div class="tabla-scroll">
+            <table id="tabla-empresas" class="tabla-datos"><thead></thead><tbody></tbody></table>
+          </div>
+          <form id="form-alta-empresa" class="formulario-linea" novalidate>
+            <div class="campo-form">
+              <label for="alta-emp-codigo">Código</label>
+              <input id="alta-emp-codigo" class="input sm" type="text" name="codigo">
+            </div>
+            <div class="campo-form">
+              <label for="alta-emp-nombre">Nombre</label>
+              <input id="alta-emp-nombre" class="input sm" type="text" name="nombre" style="min-width:220px;">
+            </div>
+            <button id="btn-crear-empresa" class="boton principal" type="submit">Crear empresa</button>
+          </form>
+        </div>
+
+        <!-- Usuarios -->
+        <div class="tarjeta" id="tarjeta-usuarios" aria-label="Usuarios">
+          <h3>Usuarios</h3>
+          <div id="banner-usuario" class="banner" hidden>
+            <span id="banner-usuario-texto"><!-- Usuario ... creado. Contraseña temporal: ... --></span>
+            <button id="btn-cerrar-banner" class="boton sm" type="button" style="border:1px solid var(--acento);color:var(--texto-cabecera);background:var(--superficie);">Cerrar</button>
+          </div>
+          <div class="tabla-scroll">
+            <table id="tabla-usuarios" class="tabla-datos"><thead></thead><tbody></tbody></table>
+          </div>
+          <form id="form-alta-usuario" class="formulario-linea" novalidate>
+            <div class="campo-form">
+              <label for="alta-us-nombre">Nombre</label>
+              <input id="alta-us-nombre" class="input sm" type="text" name="nombre">
+            </div>
+            <div class="campo-form">
+              <label for="alta-us-email">Correo</label>
+              <input id="alta-us-email" class="input sm" type="email" name="email" style="min-width:220px;">
+            </div>
+            <div class="campo-form">
+              <label for="alta-us-rol">Rol</label>
+              <select id="alta-us-rol" class="select-control sm" name="rol" style="min-height:40px;">
+                <option value="Cliente">Cliente</option>
+                <option value="Interno ABGA">Interno ABGA</option>
+              </select>
+            </div>
+            <button id="btn-crear-usuario" class="boton principal" type="submit">Crear usuario</button>
+          </form>
+        </div>
+
+      </section>
+
+    </main>
+  </div>
+
+<script src="app.js"></script>
+</body>
+</html>

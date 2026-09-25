@@ -1,0 +1,108 @@
+# REQ-01 ABGA — Conciliación de Mayores (Portal)  (id=f4hwMKOvD98KoHx8)
+nodes=11 activo=True
+  - [webhook] Webhook 
+  - [manualTrigger] Manual Trigger 
+  - [set] Preparar Parámetros 
+  - [httpRequest] Auth apiCON url=http://apicon.diezsoftware.com/token method=POST
+  - [set] Guardar Token 
+  - [httpRequest] GET Apuntes Clientes (43x) url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year }}'&$top=5000 method=GET
+  - [code] Conciliar Mayores -> REQ-01-Conciliar_Mayores.js (7854 chars, 191 lineas)
+  - [microsoftExcel] Log en Excel SharePoint 
+  - [respondToWebhook] Respuesta Webhook 
+  - [lmChatOpenAi] OpenAI Chat Model model=gpt-5.4-mini opts=[]
+  - [agent] Agente Conciliación1 model=None opts=['systemMessage']
+
+# REQ-02 ABGA — Proyecciones Financieras (Portal)  (id=zqrNnoLvZvKtiylP)
+nodes=14 activo=True
+  - [webhook] Webhook 
+  - [manualTrigger] Manual Trigger 
+  - [set] Preparar Parámetros 
+  - [httpRequest] Auth apiCON url=http://apicon.diezsoftware.com/token method=POST
+  - [set] Guardar Token 
+  - [httpRequest] GET Apuntes Año Actual url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año -1 url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.yearAnterior }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año -2 url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year2 }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año -3 url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year3 }}'&$top=5000 method=GET
+  - [code] Calcular Proyecciones -> REQ-02-Calcular_Proyecciones.js (8589 chars, 166 lineas)
+  - [microsoftExcel] Log en Excel SharePoint 
+  - [respondToWebhook] Respuesta Webhook 
+  - [agent] Agente Proyecciones1 model=None opts=['systemMessage']
+  - [lmChatOpenAi] OpenAI Chat Model model=gpt-5.4 opts=[]
+
+# REQ-03 ABGA — Informe Autodespro (Portal)  (id=5V1EviDIoNp19hK8)
+nodes=16 activo=True
+  - [webhook] Webhook 
+  - [manualTrigger] Manual Trigger 
+  - [set] Preparar Parámetros 
+  - [httpRequest] Auth apiCON url=http://apicon.diezsoftware.com/token method=POST
+  - [set] Guardar Token 
+  - [httpRequest] GET Apuntes Año Principal url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año Anterior url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.yearAnterior }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año -2 url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year2 }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año -3 url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year3 }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año -4 url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year4 }}'&$top=5000 method=GET
+  - [code] Calcular Datos Autodespro -> REQ-03-Calcular_Datos_Autodespro.js (12898 chars, 176 lineas)
+  - [lmChatAnthropic] Claude Sonnet 4 model=claude-sonnet-5 opts=[]
+  - [microsoftExcel] Log en Excel SharePoint 
+  - [respondToWebhook] Respuesta Webhook 
+  - [agent] Agente Informe Autodespro1 model=None opts=['systemMessage']
+  - [lmChatOpenAi] OpenAI Chat Model model=gpt-5-mini opts=[]
+
+# REQ-04 ABGA — Detección de Duplicados (Portal)  (id=cJdOu9KK7kmOYMJe)
+nodes=11 activo=True
+  - [webhook] Webhook 
+  - [manualTrigger] Manual Trigger 
+  - [set] Preparar Parámetros 
+  - [httpRequest] Auth apiCON url=http://apicon.diezsoftware.com/token method=POST
+  - [set] Guardar Token 
+  - [httpRequest] GET Apuntes del Ejercicio url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year }}'&$top=5000 method=GET
+  - [code] Detectar Duplicados -> REQ-04-Detectar_Duplicados.js (5969 chars, 148 lineas)
+  - [microsoftExcel] Log en Excel SharePoint 
+  - [respondToWebhook] Respuesta Webhook 
+  - [agent] Agente Duplicados1 model=None opts=['systemMessage']
+  - [lmChatOpenAi] OpenAI Chat Model model=gpt-5.5-2026-04-23 opts=[]
+
+# REQ-05 ABGA — Balance y PyG (Portal)  (id=l3mJoVoCaOskznec)
+nodes=13 activo=True
+  - [webhook] Webhook 
+  - [manualTrigger] Manual Trigger 
+  - [set] Preparar Parámetros 
+  - [httpRequest] Auth apiCON url=http://apicon.diezsoftware.com/token method=POST
+  - [set] Guardar Token 
+  - [httpRequest] GET Apuntes Año Actual url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año Anterior url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.yearAnterior }}'&$top=5000 method=GET
+  - [code] Calcular Estados Financieros -> REQ-05-Calcular_Estados_Financieros.js (10398 chars, 185 lineas)
+  - [microsoftExcel] Log en Excel SharePoint 
+  - [respondToWebhook] Respuesta Webhook 
+  - [respondToWebhook] Respuesta Error 
+  - [lmChatOpenAi] OpenAI Chat Model model=gpt-5.1-2025-11-13 opts=[]
+  - [agent] Agente Balance y PyG1 model=None opts=['systemMessage']
+
+# REQ-06 ABGA — Alertas Fiscales (Portal)  (id=9ZPQY6c1EjZKA8dz)
+nodes=11 activo=True
+  - [webhook] Webhook 
+  - [manualTrigger] Manual Trigger 
+  - [set] Preparar Parámetros 
+  - [httpRequest] Auth apiCON url=http://apicon.diezsoftware.com/token method=POST
+  - [set] Guardar Token 
+  - [httpRequest] GET Apuntes IVA y Retenciones url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year }}'&$top=5000 method=GET
+  - [code] Calcular Situación Fiscal -> REQ-06-Calcular_Situación_Fiscal.js (6723 chars, 138 lineas)
+  - [microsoftExcel] Log en Excel SharePoint 
+  - [respondToWebhook] Respuesta Webhook 
+  - [lmChatOpenAi] OpenAI Chat Model model=gpt-5.2 opts=[]
+  - [agent] Agente fiscal model=None opts=['systemMessage']
+
+# REQ-08 ABGA — Memoria CCAA (Portal)  (id=a2FViNhXXe4gDRIE)
+nodes=12 activo=True
+  - [webhook] Webhook 
+  - [manualTrigger] Manual Trigger 
+  - [set] Preparar Parámetros 
+  - [httpRequest] Auth apiCON url=http://apicon.diezsoftware.com/token method=POST
+  - [set] Guardar Token 
+  - [httpRequest] GET Apuntes Año Principal url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.year }}'&$top=5000 method=GET
+  - [httpRequest] GET Apuntes Año Anterior url==http://apicon.diezsoftware.com/api/apuntes/?$filter=Ejercicio eq '{{ $('Guardar Token').item.json.yearAnterior }}'&$top=5000 method=GET
+  - [code] Preparar Datos Memoria -> REQ-08-Preparar_Datos_Memoria.js (9258 chars, 145 lineas)
+  - [microsoftExcel] Log en Excel SharePoint 
+  - [respondToWebhook] Respuesta Webhook 
+  - [agent] Agente Memoria CCAA1 model=None opts=['systemMessage']
+  - [lmChatOpenAi] OpenAI Chat Model model=gpt-5.5-2026-04-23 opts=[]

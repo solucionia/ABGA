@@ -1,0 +1,34 @@
+# secretos y datos del cliente — nunca a git
+.env
+.env.local
+
+# datos y caché
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# fixtures: son respuestas reales del ERP (datos del cliente)
+fixtures/
+
+# informes generados para revisar a mano (contienen datos del cliente)
+salidas/
+
+# mock con datos reales de la API para previsualizar el diseño (datos del cliente)
+mock/
+
+# entorno de desarrollo
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# node (por si se añade un frontal con build)
+node_modules/
+.next/
+
+# sistema
+.DS_Store
+*.log
