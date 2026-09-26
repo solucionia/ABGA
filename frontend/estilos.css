@@ -574,6 +574,14 @@ h1, h2, h3 { color: var(--texto); }
   border-color: var(--acento);
 }
 
+/* El atributo `hidden` tiene que ganar siempre.
+   `.loading` (y otras clases) fijan `display`, y una regla de autor pisa el `display:none` que el
+   navegador da a `[hidden]`: el «Generando informe…» se quedaba en pantalla encima del informe ya
+   generado. Esta regla vale para todos los `hidden` del portal, no solo para el cargador. */
+[hidden] {
+  display: none !important;
+}
+
 .loading {
   padding: 40px 0;
   display: flex;

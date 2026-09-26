@@ -88,6 +88,10 @@ def main() -> None:
         codigos_int = sorted(e["cod_empresa"] for e in r.get("empresas", []))
         check({"1092", "6091"} <= set(codigos_int) and len(codigos_int) > len(codigos),
               "el interno ve todas las empresas", f"{len(codigos_int)} frente a {len(codigos)} del cliente")
+        r = cli.get(f"{BASE}/api/empresas", headers=h_int).json()
+        con_datos = [e["cod_empresa"] for e in r.get("empresas", []) if e.get("con_datos")]
+        check("6091" in con_datos, "el listado dice qué empresas tienen datos cargados (sin ir una a una)",
+              str(con_datos[:6]))
 
         r = cli.post(f"{BASE}/api/informe", headers=h_cli, json={"modulo": "fiscal", "cod_empresa": "1092", "year": 2025})
         check(r.status_code == 403, "el cliente no puede pedir datos de otra empresa", f"HTTP {r.status_code}")
@@ -102,6 +106,13 @@ def main() -> None:
         check(r.status_code == 200, "el interno sí genera los informes internos", f"HTTP {r.status_code}")
 
         print("\n=== generación de informes (datos en caché) ===")
+        # El portal enseña la fecha de los APUNTES (cuándo se leyeron del ERP), no la de generación:
+        # si el meta dejara de traerla, el cliente vería una fecha que no es la de sus datos.
+        r = cli.post(f"{BASE}/api/informe", headers=h_int,
+                     json={"modulo": "pyg", "cod_empresa": "6091", "year": 2025})
+        ej = (((r.json() or {}).get("meta") or {}).get("ejercicios") or {}).get("2025") or {}
+        check(bool(ej.get("actualizado")), "el informe dice de cuándo son los datos", str(ej.get("actualizado")))
+        check(bool(ej.get("cobertura")), "y declara la cobertura del ejercicio", str(ej.get("cobertura"))[:45])
         for nombre in ("fiscal", "duplicados", "conciliacion"):
             t0 = time.perf_counter()
             r = cli.post(f"{BASE}/api/informe", headers=h_int,

@@ -64,11 +64,20 @@ def _de_b64(texto: str) -> bytes:
     return base64.urlsafe_b64decode(texto + "=" * (-len(texto) % 4))
 
 
-def crear_token(email: str, rol: str, empresas: list[str], *, minutos: int | None = None) -> str:
+def crear_token(email: str, rol: str, *, minutos: int | None = None) -> str:
+    """Token de sesión firmado.
+
+    **No lleva la lista de empresas, y es a propósito.** La llevaba (`emp`), y con el usuario interno
+    —391 empresas— la cabecera `Set-Cookie` se ponía en ~3.900 bytes: nginx responde **502**
+    («upstream sent too big header») a las peticiones por HTTP/2, así que el login fallaba en el
+    navegador («respuesta no válida») mientras por HTTP/1.1 parecía ir bien; además los navegadores
+    descartan las cookies de más de 4 KB. Los permisos se leen de la base de datos en cada petición
+    (`usuario_actual` ya lo hace), así que aquí solo hace falta quién es y hasta cuándo vale.
+    """
     cfg = cargar_config()
     minutos = minutos or cfg.token_ttl_min
     payload = {
-        "sub": email, "rol": rol, "emp": empresas,
+        "sub": email, "rol": rol,
         "exp": int((datetime.now(timezone.utc) + timedelta(minutes=minutos)).timestamp()),
         "iat": int(datetime.now(timezone.utc).timestamp()),
     }
@@ -105,7 +114,7 @@ def autenticar(email: str, password: str) -> tuple[str | None, dict[str, Any] | 
         return None, None, "Este usuario está desactivado."
     if not verificar_password(password, db.hash_de(email)):
         return None, None, "Usuario o contraseña incorrectos."
-    token = crear_token(email, us["rol"], us["empresas"])
+    token = crear_token(email, us["rol"])
     return token, us, ""
 
 

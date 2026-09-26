@@ -162,9 +162,13 @@ def _comprobar_pin(cod: str, pin: str) -> bool:
     return bool(pin) and auth.verificar_password(pin, db.pin_guardado(cod))
 
 
-def _sesion(email: str, rol: str, empresas: list[str], *, empresa: dict[str, Any] | None = None) -> JSONResponse:
-    """Deja dentro al usuario recién dado de alta, igual que el login (cookie httpOnly)."""
-    token = auth.crear_token(email, rol, empresas)
+def _sesion(email: str, rol: str, *, empresa: dict[str, Any] | None = None) -> JSONResponse:
+    """Deja dentro al usuario recién dado de alta, igual que el login (cookie httpOnly).
+
+    El token no lleva las empresas (ver `auth.crear_token`): el usuario que devuelve el cuerpo lo
+    trae ya leído de la base de datos.
+    """
+    token = auth.crear_token(email, rol)
     cuerpo: dict[str, Any] = {"status": "ok", "token": token, "usuario": db.usuario(email)}
     if empresa:
         cuerpo["empresa"] = {"cod_empresa": empresa["cod_empresa"], "nombre": empresa["nombre"]}
@@ -208,7 +212,7 @@ def registro(payload: dict[str, Any] = Body(...)) -> JSONResponse:
     db.registrar_ejecucion(cod_empresa=cod, ejercicio=None, modulos="alta_cliente", origen="registro",
                            email=email, segundos=0.0, estado="ok", desde_cache=False,
                            detalle="alta por autorregistro")
-    return _sesion(email, "cliente", [cod], empresa=empresa)
+    return _sesion(email, "cliente", empresa=empresa)
 
 
 @app.get("/api/interno/empresas")
@@ -326,6 +330,11 @@ def empresas(us: dict[str, Any] = Depends(usuario_actual)) -> dict[str, Any]:
     lista = [e for e in db.listar_empresas() if e["cod_empresa"] in permitidas]
     if not lista and permitidas:  # empresas sin ficha creada todavía
         lista = [{"cod_empresa": c, "nombre": f"Empresa {c}", "ejercicio_inicio": None} for c in sorted(permitidas)]
+    # `con_datos` evita que el portal vaya preguntando empresa por empresa cuál tiene datos cargados:
+    # con las 391 de la asesoría eran cientos de peticiones y el panel parecía que no cargaba nunca.
+    con_datos = db.empresas_con_datos()
+    for e in lista:
+        e["con_datos"] = e["cod_empresa"] in con_datos
     return {"status": "ok", "empresas": lista}
 
 
@@ -421,6 +430,15 @@ def refrescar(payload: dict[str, Any] = Body(...),
     """Lanza la lectura del ejercicio en segundo plano (progreso en /api/trabajos/{id})."""
     cod = _empresa_permitida(us, payload.get("cod_empresa"))
     year = int(payload.get("year") or 0)
+    # En modo solo-caché el ERP no se toca. Se dice aquí y no se crea un trabajo condenado a fallar:
+    # el portal se quedaba mirando el progreso hasta que el trabajo reventaba.
+    if cargar_config().solo_cache:
+        return JSONResponse(
+            {"status": "error",
+             "error": f"Este ejercicio ({cod}/{year}) no está cargado y la plataforma está en modo "
+                      f"solo-caché, así que no se le pide al ERP. Hay que quitar APICON_SOLO_CACHE."},
+            status_code=409,
+        )
     t = trabajos.lanzar_carga(cod, year, modulos_pedidos=payload.get("modulos"),
                               forzar=bool(payload.get("forzar", True)), email=us["email"])
     return {"status": "ok", "trabajo": t.como_json()}

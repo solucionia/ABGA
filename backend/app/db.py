@@ -124,6 +124,16 @@ def listar_empresas() -> list[dict[str, Any]]:
     return [dict(f) for f in filas]
 
 
+def empresas_con_datos() -> set[str]:
+    """Códigos de empresa con algún ejercicio en la caché, en una sola consulta.
+
+    El portal lo usa para saber qué empresa abrir al entrar: preguntándolo empresa por empresa eran
+    cientos de peticiones con las 391 de la asesoría, y el panel parecía colgado.
+    """
+    filas = cache.conectar().execute("SELECT DISTINCT empresa FROM apuntes").fetchall()
+    return {str(f[0]) for f in filas}
+
+
 def empresas_de(email: str) -> list[str]:
     us = usuario_bruto(email)
     if us and us["rol"] in {"interno", "admin"}:

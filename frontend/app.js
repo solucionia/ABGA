@@ -81,7 +81,7 @@ async function arrancar() {
 
   const selEmp = $('select-empresa');
   selEmp.innerHTML = estado.empresas.map((e) => `<option value="${esc(e.cod_empresa)}">${esc(e.nombre)}</option>`).join('');
-  if (!estado.empresas.some((e) => e.cod_empresa === estado.empresa)) estado.empresa = await primeraEmpresaConDatos();
+  if (!estado.empresas.some((e) => e.cod_empresa === estado.empresa)) estado.empresa = primeraEmpresaConDatos();
   selEmp.value = estado.empresa;
   // cada cliente va ligado a su número de empresa; si sólo tiene una, no hay que elegir
   $('select-empresa').closest('.campo').style.display = estado.empresas.length > 1 ? '' : 'none';
@@ -92,16 +92,16 @@ async function arrancar() {
   await cargarPanel();
 }
 
-/** Empresa por defecto: la primera que tenga algún ejercicio con datos cargados. */
-async function primeraEmpresaConDatos() {
+/** Empresa por defecto: la primera que tenga algún ejercicio cargado.
+ *
+ * Se decide con la lista que ya está en memoria (el servidor marca `con_datos` de una vez). Antes se
+ * preguntaba empresa por empresa, y con las 391 de la asesoría eran cientos de peticiones: al
+ * recargar la página el panel se quedaba cargando minutos sin que se viera nada.
+ */
+function primeraEmpresaConDatos() {
   if (!estado.empresas.length) return '';
-  for (const e of estado.empresas) {
-    try {
-      const r = await api(`/api/ejercicios?cod_empresa=${encodeURIComponent(e.cod_empresa)}`);
-      if ((r.ejercicios || []).some((y) => y.tiene_datos)) return e.cod_empresa;
-    } catch (err) { /* sigue con la siguiente */ }
-  }
-  return estado.empresas[0].cod_empresa;
+  const conDatos = estado.empresas.find((e) => e.con_datos);
+  return (conDatos || estado.empresas[0]).cod_empresa;
 }
 
 /** Rellena el selector de ejercicios y abre por el último ejercicio con datos. */
@@ -142,10 +142,16 @@ async function cargarPanel() {
 
 function pintarPanel(d, meta, avisos) {
   const k = d.kpis;
-  const cache = meta && meta.desde_cache ? 'Datos sincronizados con el ERP el ' + fechaCorta(meta.generado) : 'Leyendo del ERP…';
-  $('avisos').hidden = avisos.length === 0;
-  $('avisos').innerHTML = avisos.map((a) => `<div class="aviso"><span class="punto aviso"></span><span>${esc(a)}</span></div>`).join('') +
-    (avisos.length ? `<div class="aviso"><span class="punto info"></span><span>${esc(cache)}</span></div>` : '');
+  // La fecha que importa es la de los apuntes (cuándo se leyeron del ERP), no la de ahora mismo: si
+  // se enseña la de generación, se está diciendo que los datos son de hoy cuando pueden ser de hace
+  // días. Y se enseña siempre, no sólo cuando hay avisos.
+  const info = ((meta || {}).ejercicios || {})[String(estado.year)] || {};
+  const cache = info.actualizado
+    ? 'Datos del ERP actualizados el ' + fechaCorta(info.actualizado)
+    : (meta && meta.desde_cache ? 'Datos servidos de la caché' : 'Leyendo del ERP…');
+  $('avisos').hidden = false;
+  $('avisos').innerHTML = avisos.map((a) => `<div class="aviso"><span class="punto info"></span><span>${esc(a)}</span></div>`).join('') +
+    `<div class="aviso"><span class="punto info"></span><span>${esc(cache)}</span></div>`;
 
   const kpis = [
     ['Ingresos', imp(k.totalIngresos), varTxt(k.varIngresos), cls(k.varIngresos)],
@@ -357,6 +363,22 @@ function tarjetaPendiente(p) {
   return div;
 }
 
+/** De cuándo son los datos que se están viendo.
+ *
+ * Tiene que ser la fecha de los APUNTES (cuándo se leyeron del ERP), no la de este momento: Iván
+ * pidió que el cliente pueda ver hasta qué fecha está actualizado lo que mira, no esconderlo. Va
+ * dentro del resultado del informe para que salga también en el PDF (el botón Imprimir imprime eso).
+ */
+function lineaDatos(meta, year) {
+  const info = ((meta || {}).ejercicios || {})[String(year)] || {};
+  if (!info.actualizado) return '';
+  const cobertura = (info.cobertura || '').split(':')[0].trim();
+  return `<div class="aviso"><span class="punto info"></span><span>Datos del ERP actualizados el `
+    + `<strong>${esc(fechaCorta(info.actualizado))}</strong>`
+    + (cobertura ? ` · cobertura ${esc(cobertura)}` : '')
+    + `</span></div>`;
+}
+
 async function abrirInforme(modulo, forzar) {
   estado.moduloAbierto = modulo.nombre;
   $('informe-visor').hidden = false;
@@ -382,7 +404,7 @@ async function abrirInforme(modulo, forzar) {
   $('informe-loading').hidden = true;
   if (r.status !== 'ok') { $('informe-resultado').innerHTML = `<div class="aviso"><span class="punto error"></span><span>${esc(r.error || 'No se pudo generar el informe')}</span></div>`; return; }
   const avisos = (r.avisos || []).map((a) => `<div class="aviso"><span class="punto info"></span><span>${esc(a)}</span></div>`).join('');
-  $('informe-resultado').innerHTML = avisos + r.html;
+  $('informe-resultado').innerHTML = lineaDatos(r.meta, estado.year) + avisos + r.html;
   $('informe-visor').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 

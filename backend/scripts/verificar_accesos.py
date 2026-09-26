@@ -67,6 +67,11 @@ def main() -> int:
     check(r.json().get("cod_empresa") == "6091" and bool(r.json().get("empresa")),
           "el acceso devuelve con qué empresa se abre y su nombre",
           f"{r.json().get('cod_empresa')} · {r.json().get('empresa')}")
+    # El token llevaba la lista de empresas (391 con el interno) y la cabecera Set-Cookie se iba a
+    # ~3.900 bytes: nginx devolvía 502 por HTTP/2 y el navegador decía «respuesta no válida».
+    cookie = r.headers.get("set-cookie") or ""
+    check(0 < len(cookie) < 1024, "la cookie de sesión se mantiene pequeña",
+          f"{len(cookie)} bytes")
     check(admin.get("/api/interno/usuarios").status_code == 200, "el panel interno responde")
     check(anon.get("/api/interno/usuarios").status_code == 401,
           "el panel interno NO responde sin sesión")

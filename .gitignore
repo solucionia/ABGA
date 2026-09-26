@@ -32,3 +32,6 @@ node_modules/
 # sistema
 .DS_Store
 *.log
+
+# maquetas y capturas de la fase de diseño: material de trabajo, no parte del producto
+_revisar_ABGA/
