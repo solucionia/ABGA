@@ -521,7 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('btn-rol-cliente').addEventListener('click', () => {
     $('login-email').value = 'cliente@mbdommo.com';
-    $('login-password').value = 'demo2025';
+    $('login-password').value = 'dommo2026demo';
     $('login-empresa').value = '6091';
   });
   $('btn-rol-interno').addEventListener('click', () => { $('login-email').value = 'admin@abgaconsultores.com'; $('login-password').focus(); });
