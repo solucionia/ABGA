@@ -131,7 +131,9 @@ def empresas_con_datos() -> set[str]:
     cientos de peticiones con las 391 de la asesoría, y el panel parecía colgado.
     """
     filas = cache.conectar().execute("SELECT DISTINCT empresa FROM apuntes").fetchall()
-    return {str(f[0]) for f in filas}
+    # Por nombre de columna, no por posición: en PostgreSQL las filas llegan como diccionario y
+    # `f[0]` revienta (funcionaba en SQLite y fallaba en producción).
+    return {str(f["empresa"]) for f in filas}
 
 
 def empresas_de(email: str) -> list[str]:

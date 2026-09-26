@@ -100,6 +100,11 @@ def recorrido(motor: str) -> None:
     comprobar("los asientos vuelven enteros", leido["asientos"][0]["Descripcion"],
               "FV/2025/00001-CLIENTE UNO")
     comprobar("json numérico intacto", leido["asientos"][0]["Detalles"][0]["Debe"], 1210.0)
+    # `empresas_con_datos` lee la columna por NOMBRE: en PostgreSQL las filas llegan como diccionario y
+    # por posición revienta. Funcionaba en SQLite y dio 500 en producción, así que se comprueba en los
+    # dos motores desde aquí.
+    comprobar("empresas con datos en caché", db.empresas_con_datos(), {"6091"})
+    comprobar("la que no tiene datos no sale", db.empresas_con_datos() & {"1092"}, set())
 
     cache.guardar_apuntes("6091", 2025, ASIENTOS[:1], resultados_totales=2, cobertura="parcial (1 de 2)",
                           segundos=3.0)
