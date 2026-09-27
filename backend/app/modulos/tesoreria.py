@@ -102,7 +102,7 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str,
 
     # ---------- tesorería ----------
     saldos = saldos_por_cuenta(lineas)
-    cuentas = []
+    cuentas: list[dict[str, Any]] = []
     for cuenta, s in saldos.items():
         if any(cuenta.startswith(p) for p in P_TESORERIA) and (s.debe or s.haber):
             cuentas.append({"cuenta": cuenta, "saldo": round(s.deudor, 2), "n": s.n})
@@ -115,7 +115,8 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str,
             m = mes_de(l.fecha)
             if 1 <= m <= 12:
                 movimiento_mes[m] += l.debe - l.haber
-    mensual, acumulado = [], 0.0
+    mensual: list[dict[str, Any]] = []
+    acumulado = 0.0
     for m in range(1, 13):
         acumulado += movimiento_mes[m]
         mensual.append({"mes": MESES[m - 1], "flujo": round(movimiento_mes[m], 2),
@@ -138,10 +139,10 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str,
     pmp = round(saldo_proveedores / compras * 365) if compras else None
 
     # ---------- previsión a 3 meses con el flujo medio observado ----------
-    ultimos = [m["flujo"] for m in mensual[-3:] if m["flujo"]]
+    ultimos: list[float] = [float(m["flujo"]) for m in mensual[-3:] if m["flujo"]]
     flujo_medio = round(sum(ultimos) / len(ultimos), 2) if ultimos else 0.0
     prevision = []
-    saldo_prev = tesoreria_total
+    saldo_prev = float(tesoreria_total)
     for i in range(1, 4):
         saldo_prev += flujo_medio
         prevision.append({"mes": f"mes +{i}", "flujo": flujo_medio, "saldo": round(saldo_prev, 2)})

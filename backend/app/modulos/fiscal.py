@@ -348,7 +348,7 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any] | None = None, *,
 
     # 1 · resumen
     periodo = datos.get("periodo") or TRIMESTRE_PERIODO[trimestre - 1]
-    plazo_303 = next((v for v in venc if v["modelo"] == "303"), {})
+    plazo_303: dict[str, Any] = next((v for v in venc if v["modelo"] == "303"), {})
     kpis = inf.kpis([
         ("IVA repercutido (477)", inf.importe(datos.get("ivaRepercutido", 0.0))),
         ("IVA soportado (472)", inf.importe(datos.get("ivaSoportado", 0.0))),

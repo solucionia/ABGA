@@ -311,22 +311,22 @@ def tramos_antiguedad(lineas: Iterable[Linea], ref: int) -> list[dict[str, Any]]
     """Importe y partidas pendientes por tramo de antigüedad (para la gráfica)."""
     tramos = [("Hasta 3 meses", 0, 91), ("3-6 meses", 92, 182), ("6-12 meses", 183, 365),
               ("> 12 meses", 366, 10 ** 6)]
-    acumulado = {nombre: {"tramo": nombre, "n": 0, "importe": 0.0} for nombre, _, _ in tramos}
+    partidas = {nombre: 0 for nombre, _, _ in tramos}
+    importes = {nombre: 0.0 for nombre, _, _ in tramos}
     for l in lineas:
         if not esta_pendiente(l):
             continue
         dias = abs(_dias(l.fecha, ref))
         for nombre, desde, hasta in tramos:
             if desde <= dias <= hasta:
-                acumulado[nombre]["n"] += 1
-                acumulado[nombre]["importe"] += l.importe
+                partidas[nombre] += 1
+                importes[nombre] += l.importe
                 break
     salida = []
     for nombre, _, _ in tramos:
-        fila = acumulado[nombre]
-        fila["importe"] = round(fila["importe"], 2)
-        fila["importe_abs"] = round(abs(fila["importe"]), 2)
-        salida.append(fila)
+        importe = round(importes[nombre], 2)
+        salida.append({"tramo": nombre, "n": partidas[nombre], "importe": importe,
+                       "importe_abs": round(abs(importe), 2)})
     return salida
 
 

@@ -283,7 +283,7 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
         ("Impuesto sobre sociedades", -datos["impuesto"], None),
         ("Resultado del ejercicio", datos["resultadoNeto"], "total"),
     ]
-    filas_pyg_html = []
+    filas_pyg_html: list[str] = []
     for etiqueta, valor, tipo in filas_pyg:
         peso = "bold" if tipo == "total" else "normal"
         fondo = AZUL_FILA if tipo == "total" else ("#fff" if len(filas_pyg_html) % 2 == 0 else "#f9fbff")

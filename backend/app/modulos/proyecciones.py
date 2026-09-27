@@ -49,12 +49,13 @@ proyección cuadre con el PyG del portal.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .. import informes as inf
 from ..ledger import (
     MESES,
+    Linea,
     a_float,
     comprobar_cuadre,
     fmt,
@@ -109,7 +110,8 @@ COLOR_CAJA = "#00838f"
 
 # ---------------------------------------------------------------- magnitudes
 
-def magnitudes(lineas: Sequence, previas: Sequence | None = None) -> dict[str, Any]:
+def magnitudes(lineas: Sequence[Linea], previas: Sequence[Linea] | Mapping[str, Any] | None = None
+               ) -> dict[str, Any]:
     """PyG y saldos de un ejercicio, con los mismos criterios que el módulo `pyg`.
 
     Nunca recorta los saldos contrarios (`recortar=False`): un gasto financiero abonado o
@@ -136,8 +138,12 @@ def magnitudes(lineas: Sequence, previas: Sequence | None = None) -> dict[str, A
     proveedores = suma_acreedor(s, P_PROVEEDORES, recortar=False)
     cash_flow = resultado + amortizaciones
 
-    d_previos: dict[str, float] = {}
-    d_previos = (magnitudes(previas) if not isinstance(previas, dict) else previas) if previas else {}
+    d_previos: Mapping[str, float] = {}
+    # `previas` llega como las líneas del año anterior (lo normal) o como sus magnitudes ya
+    # calculadas; con `Mapping` mypy sabe cuál es cuál, con `dict` no (un mapeo no tiene por
+    # qué ser un dict).
+    d_previos = (magnitudes(previas) if not isinstance(previas, Mapping) else previas) if previas \
+        else {}
     var_deudores = deudores - a_float(d_previos.get("deudores")) if d_previos else 0.0
     var_proveedores = proveedores - a_float(d_previos.get("proveedores")) if d_previos else 0.0
     flujo_operativo = cash_flow - var_deudores + var_proveedores
@@ -519,12 +525,12 @@ def calcular(por_anio: Any, ctx: dict | None = None) -> dict[str, Any]:
     }
     # reparto mensual del ejercicio proyectado con los mismos factores estacionales
     mensual_proyectado = []
-    for m in range(1, 13):
-        ing = base["ingresos"] * fact_ing[m - 1]
-        gas = base["gastosExplotacion"] * fact_gas[m - 1]
+    for mes in range(1, 13):
+        ing = base["ingresos"] * fact_ing[mes - 1]
+        gas = base["gastosExplotacion"] * fact_gas[mes - 1]
         mensual_proyectado.append({
-            "mes": MESES[m - 1], "mes_num": m, "pesoIngresos": round(fact_ing[m - 1] * 100, 2),
-            "pesoGastos": round(fact_gas[m - 1] * 100, 2),
+            "mes": MESES[mes - 1], "mes_num": mes, "pesoIngresos": round(fact_ing[mes - 1] * 100, 2),
+            "pesoGastos": round(fact_gas[mes - 1] * 100, 2),
             "ingresos": round(ing, 2), "gastos": round(gas, 2),
             "resultado": round(ing - gas - base["amortizaciones"] / 12, 2),
         })
@@ -956,7 +962,7 @@ def informe_html(datos: dict[str, Any], ctx: dict | None = None, *, empresa: str
                               "bancario y se informa de la caja generada.")
                       + "</div>"
                       + ("".join(f"<div style='font-size:11.5px;color:#5b6b80;padding:2px 2px'>· {inf.esc(a)}</div>"
-                                 for a in datos["avisos"]) if datos["avisos"] else "")),
+                                 for a in datos["avisos"]) if datos["avisos"] else ""))
     )
     return inf.envoltura(
         titulo=TITULO,

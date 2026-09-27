@@ -318,13 +318,14 @@ def _r_saltos_numeracion(c: dict) -> dict:
             series[par[0]].append(par[1])
     if not series:
         return _res(NO_EVALUABLE, "no se han podido leer números de factura en las cuentas de ventas.")
-    saltos = []
+    saltos: list[dict[str, Any]] = []
+    total = 0
     for serie, numeros in series.items():
         orden = sorted(set(numeros))
         for a, b in zip(orden, orden[1:], strict=False):
             if b - a > 1:
                 saltos.append({"serie": serie, "desde": a, "hasta": b, "faltan": b - a - 1})
-    total = sum(s["faltan"] for s in saltos)
+                total += b - a - 1
     if not saltos:
         return _res(OK, f"Numeración de ventas continua en {len(series)} serie(s).")
     return _res(AVISO if total < 5 else ALERTA,
@@ -518,11 +519,12 @@ def _r_iva(c: dict) -> dict:
 def _r_deudas_aeat(c: dict) -> dict:
     partidas = [("475", "Hacienda acreedora (retenciones)"), ("476", "Organismos de la Seguridad Social"),
                 ("477", "IVA repercutido pendiente"), ("4751", "Retenciones de trabajo pendientes")]
-    filas = []
+    filas: list[list[Any]] = []
+    total = 0.0
     for prefijo, etiqueta in partidas:
         s = suma_acreedor(c["saldos"], [prefijo], recortar=False)
         filas.append([prefijo, etiqueta, round(s, 2)])
-    total = sum(f[2] for f in filas)
+        total += s
     if abs(total) < 0.01:
         return _res(OK, "Sin deudas pendientes con Hacienda ni con la Seguridad Social.")
     return _res(AVISO, f"{fmt(total)} pendientes de pago a administraciones públicas.",
@@ -541,8 +543,9 @@ def _r_modelo_347(c: dict) -> dict:
             totales[nombre_tercero(l.tercero, l.descripcion)] += l.debe
         elif l.cuenta.startswith(("40", "41")):
             totales[nombre_tercero(l.tercero, l.descripcion)] += l.haber
-    obligados = sorted(([n, round(v, 2)] for n, v in totales.items() if v > u["347_operaciones"]),
-                       key=lambda f: -f[1])
+    obligados: list[list[Any]] = sorted(
+        ([n, round(v, 2)] for n, v in totales.items() if v > u["347_operaciones"]),
+        key=lambda f: -f[1])
     if not obligados:
         return _res(OK, f"Ningún tercero supera los {fmt(u['347_operaciones'])} de operaciones del modelo 347.")
     return _res(AVISO, f"{len(obligados)} tercero(s) superan los {fmt(u['347_operaciones'])} de operaciones y "

@@ -553,7 +553,8 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any] | None = None) -> st
         meta={"Datos": "ERP apiCON (apuntes del ejercicio)",
               "Saldo inicial": {"apertura": "asientos de apertura del ejercicio",
                                 "cierre_anterior": f"saldos de cierre de {year - 1}",
-                                "ninguno": "sin apertura ni ejercicio anterior"}.get(origen, "—")},
+                                "ninguno": "sin apertura ni ejercicio anterior"}
+                               .get(origen if isinstance(origen, str) else "", "—")},
     )
 
 

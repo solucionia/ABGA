@@ -667,11 +667,13 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any] | None = None, *,
                 nota="Sin movimientos: no se inventa ninguna cifra para el trimestre."))
             continue
         vista = filas[:LIMITE_DETALLE]
-        d = next((x for x in por_q if x["trimestre"] == q), {})
-        tabla_q = _tabla_detalle([_fila_detalle(f) for f in vista], d, len(filas))
-        nota = (f'Trabajo {fmt(d.get("trabajo", 0.0))} ({_pct(d.get("tipoTrabajo"))} de tipo medio) · '
-                f'profesionales {fmt(d.get("profesionales", 0.0))} '
-                f'({_pct(d.get("tipoProfesionales"))}) · otras cuentas {fmt(d.get("otras", 0.0))}.')
+        detalle_q: dict[str, Any] = next((x for x in por_q if x["trimestre"] == q), {})
+        tabla_q = _tabla_detalle([_fila_detalle(f) for f in vista], detalle_q, len(filas))
+        nota = (f'Trabajo {fmt(detalle_q.get("trabajo", 0.0))} '
+                f'({_pct(detalle_q.get("tipoTrabajo"))} de tipo medio) · '
+                f'profesionales {fmt(detalle_q.get("profesionales", 0.0))} '
+                f'({_pct(detalle_q.get("tipoProfesionales"))}) · '
+                f'otras cuentas {fmt(detalle_q.get("otras", 0.0))}.')
         if len(filas) > LIMITE_DETALLE:
             nota += f' Se muestran los primeros {LIMITE_DETALLE}; el detalle completo va en los datos.'
         bloques_detalle.append(inf.seccion(f"Detalle del {q}T ({PERIODOS[q - 1]})", tabla_q, nota=nota))

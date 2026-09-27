@@ -38,7 +38,7 @@ de las secciones del original.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .. import informes as inf
@@ -234,7 +234,7 @@ def _firma(lineas: Sequence[Linea]) -> tuple | None:
             min(fechas) if fechas else 0, max(fechas) if fechas else 0)
 
 
-def _procedencia(anios: list[int], por_anio: dict[int, Sequence[Linea]]) -> list[dict[str, Any]]:
+def _procedencia(anios: list[int], por_anio: Mapping[int, Sequence[Linea]]) -> list[dict[str, Any]]:
     """Para cada ejercicio: ¿es real, repite los apuntes de otro, o no hay datos?
 
     Es la salvaguarda de honestidad del informe: los años repetidos no se presentan como

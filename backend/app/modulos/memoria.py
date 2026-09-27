@@ -244,7 +244,7 @@ def top_cuentas(lineas: Iterable[Linea], prefijos: Sequence[str], *, deudor: boo
     for l in lineas:
         if l.descripcion and not descripciones.get(l.cuenta):
             descripciones[l.cuenta] = l.descripcion
-    filas = []
+    filas: list[dict[str, Any]] = []
     for cuenta, saldo in s.items():
         if not any(cuenta.startswith(p) for p in prefijos):
             continue

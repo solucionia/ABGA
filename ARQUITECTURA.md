@@ -35,7 +35,24 @@ propios (ver §4).
 | 2 | Sin migraciones versionadas: `ESQUEMA` + `MIGRACIONES` + `migrar()` en `conectar()`. Ya provocó un cuelgue del login (`ALTER TABLE` pidiendo bloqueo sobre una tabla en uso) | `esquema.py` |
 | 3 | Frontend monolítico: `app.js` de 585 líneas, todo por `innerHTML`, sin módulos ni pruebas | `frontend/` |
 | 4 | Sin continuidad: no hay copia de seguridad del PostgreSQL de producción en el repositorio, ni entorno de previsualización, ni métricas | ninguna referencia a `pg_dump` |
-| 5 | Tipos: los 13 módulos de informe siguen calculando sobre `dict`/`object` sin tipar (es lo único que queda en la lista de excepciones de mypy) | `pyproject.toml`, `[tool.mypy.overrides]` |
+
+### Cerrado en la Fase 7 (tipos del dominio de informes, 27/09/2026)
+
+Los 14 ficheros de `app.modulos` —los 13 informes y su catálogo— estaban exentos de mypy desde la
+Fase 1 (`ignore_errors`) porque venían de los nodos Code de n8n, que calculan sobre `dict`. Medido
+antes de empezar: **31 errores en 11 ficheros**, ninguno en los otros tres. Al arreglarlos se cerró el
+último punto de la tabla de arriba y apareció lo que la excepción escondía:
+
+| Qué | Evidencia |
+|---|---|
+| El informe de **Proyecciones** devolvía el cuerpo metido en una **tupla de un elemento** (una coma de más al cerrar la expresión del HTML): el documento salía con el HTML entre comillas —`('<table style=…',)`, con las comillas escapadas— y así lo pintaba el portal | `ast.parse` lo confirma (`Assign.value` es un `Tuple`); el HTML llevaba 1 marca `('` y 1 `',)`; ninguna prueba lo veía porque la que mira el HTML de los módulos corre con los fixtures reales y se omite en la CI |
+| Y por eso ahora hay una prueba que **no** necesita datos del cliente: `backend/tests/test_modulos_sinteticos.py` renderiza los **13** informes con datos sintéticos y exige que el documento sea HTML (sin `repr`, sin comillas escapadas, con el cuerpo empezando por etiqueta) | 14 pruebas; se comprobó que **falla** en `proyecciones` antes del arreglo y pasa después |
+
+Los demás errores eran anotaciones que faltaban (`list[dict[str, Any]]` en acumuladores), variables
+reutilizadas con otro tipo (el `m` de un bucle que antes era un movimiento, el `d` de un `dict.get`),
+`Mapping`/`Sequence` en las firmas en lugar de `dict`/`list` (que mypy rechaza por invariancia) y una
+clave de diccionario que podía venir como `Any | None`. `pyproject.toml` ya **no tiene la excepción**:
+`mypy` comprueba 65 ficheros sin una queja.
 
 ### Cerrado en la Fase 1 (contrato, capas y errores)
 
@@ -435,6 +452,7 @@ Teams, en `app/alertas.py`) y el frontal que pinte el semáforo y ajuste los cri
 | **4** ✅ | Observabilidad: identificador de petición (`X-Request-ID`) en las respuestas, en las líneas de registro y en `ejecuciones`; `LOG_FORMATO=json`; `GET /api/interno/metricas`; tabla `avisos` con `cobertura_parcial`/`error_calculo`/`error_erp`, agrupando repetidos y con `/api/salud` publicando los pendientes | Hace visibles los fallos que hoy sólo se ven si alguien mira | hecho |
 | **5** | Frontend: partir `app.js` en módulos ES y probar las funciones puras (sin framework); valorar Vite+Vue/React **sólo** cuando lleguen los ~50 análisis con semáforo | El estado de la UI se complica de verdad ahí, no antes | 2 días |
 | **6** ✅ | Producto: el catálogo declarativo de análisis (32 reglas, ya existía) **más** su capa de producto: `GET /api/analisis` con filtros y **criterios ajustables por cliente**, `GET /api/interno/cartera` (semáforo de todos los clientes, sólo caché), aviso `analisis_rojo` y camino sin ERP (`ejecutar_solo_cache`) | Es el salto a «plataforma de asesoría» que pidió ABGA, y encaja sin tocar el borde | hecho (queda: acercarse a los ~50 análisis y pintar el semáforo en el frontal) |
+| **7** ✅ | Tipos del dominio de informes: los 14 ficheros de `app.modulos` compilan sin la excepción de mypy y hay una prueba que renderiza los 13 informes **sin** datos del cliente | Era el último punto de la tabla de arriba, y en esa excepción se escondía un fallo visible (Proyecciones servía el cuerpo dentro de una tupla) | hecho |
 
 **Lo que no se va a hacer** (y por qué): microservicios, colas o Kubernetes (un contenedor y un
 PostgreSQL son lo correcto para este tamaño y este equipo); ORM completo sobre el SQL actual (es

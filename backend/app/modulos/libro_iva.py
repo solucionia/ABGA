@@ -308,9 +308,9 @@ def calcular(por_anio: dict[int, list[Linea]] | list[Linea], ctx: dict[str, Any]
                         **_bloque(por_tr[q])})
 
     meses: list[dict[str, Any]] = []
-    for m in range(1, 13):
-        meses.append({"mes": m, "nombre": MESES[m - 1], "nombre_largo": MESES_LARGOS[m - 1],
-                      **_bloque(por_mes[m])})
+    for mes in range(1, 13):
+        meses.append({"mes": mes, "nombre": MESES[mes - 1], "nombre_largo": MESES_LARGOS[mes - 1],
+                      **_bloque(por_mes[mes])})
 
     # ---------- avisos de método y de datos ----------
     avisos.append(

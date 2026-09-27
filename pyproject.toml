@@ -65,14 +65,15 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
 
-# RATCHET DE TIPOS. Estos módulos todavía calculan sobre `dict`/`object` sin tipar (vienen de los
-# nodos Code de n8n). mypy los revisa pero no bloquea la CI mientras el dominio no tenga tipos:
-# el objetivo de la Fase 1 es ir vaciando esta lista, y un módulo que salga de ella no vuelve a
-# entrar. Mientras estén aquí, un error nuevo en ellos NO rompe la CI: es una limitación conocida
-# y consciente, no un olvido.
-[[tool.mypy.overrides]]
-module = ["app.modulos.*"]
-ignore_errors = true
+# RATCHET DE TIPOS, vacío desde la Fase 7 (27/09/2026). Los 14 ficheros de `app.modulos` —los 13
+# informes y su catálogo— calculan sobre `dict`/`Any` en los bordes, pero ya no tienen **ni un error
+# de tipos**: mypy comprueba el dominio entero, que es donde están las cifras que ve el cliente.
+# Estaban exentos desde la Fase 1 y en esa excepción se escondía un fallo real: el informe de
+# `proyecciones` devolvía el cuerpo metido en una tupla de un elemento (una coma de más), así que en
+# pantalla se veía «('<table …',)» con las comillas escapadas. Lo cazó `test_modulos_sinteticos.py`,
+# que ahora renderiza los 13 módulos en la CI. Al añadir un módulo: escribir las firmas sobre
+# `Mapping`/`Sequence` y no `dict`/`list` (`dict` es invariante y mypy lo rechaza al pasarlo a una
+# función que espera un `Mapping`).
 
 # ---------------------------------------------------------------- pytest
 

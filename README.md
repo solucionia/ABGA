@@ -300,6 +300,12 @@ Lo que la suite deja claro desde el primer día:
 - Los verificadores de `backend/scripts/verificar_*.py` siguen ahí y la suite los ejecuta: los
   verdes, como prueba de regresión; los tres con expectativas caducadas, como `xfail` con el
   motivo escrito.
+- **Los 13 informes se renderizan de verdad en la CI**: `tests/test_modulos_sinteticos.py` calcula
+  cada módulo con un ejercicio sintético y exige que su documento sea HTML (no un `repr`, no el HTML
+  dentro de una tupla, con el cuerpo empezando por una etiqueta). Es la prueba que destapó que el
+  informe de Proyecciones llevaba meses sirviendo el cuerpo entre comillas.
+- **El dominio está tipado de punta a punta**: `mypy` revisa los 65 ficheros sin excepciones
+  (los 13 módulos de informe incluidos, que estuvieron exentos hasta la Fase 7).
 
 ```bash
 ./.venv/bin/python -m pytest -m datos_reales -k modulos   # un módulo concreto
@@ -307,6 +313,13 @@ Lo que la suite deja claro desde el primer día:
 ```
 
 Criterios de decisión y plan por fases: **`ARQUITECTURA.md`**.
+
+**La CI corre en GitHub** (`.github/workflows/ci.yml`, en cada push a `main` y en cada PR): dependencias,
+`ruff`, `mypy`, la suite y `verificar_secretos.py`. Verde desde el 27/09/2026 (run del commit `25e1ec5`).
+Dos detalles que cuestan un rato descubrir: el flujo **sólo** se ejecuta desde `.github/workflows/`, así
+que un `ci.yml` en la raíz del repositorio no ejecuta nada; y como el token de publicación no tiene el
+permiso *Workflows*, un cambio **en ese fichero** hay que subirlo desde la web de GitHub — el resto del
+proyecto se publica como siempre.
 
 Los fixtures de `fixtures/` son respuestas reales del ERP (empresa 6091) y están fuera de git.
 
