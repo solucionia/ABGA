@@ -58,6 +58,10 @@ def _contexto(definicion: Definicion, *, cod_empresa: str, year: int, params: di
         "year_anterior": int(year) - 1,
         "nombre_mes": MESES_LARGOS[hoy.tm_mon - 1],
         "trimestre": (hoy.tm_mon - 1) // 3 + 1,
+        # Los criterios que esa empresa tiene apartados del general. Va aquí y no en el módulo porque
+        # el dominio no puede consultar la base (lo comprueba `test_arquitectura`); el módulo los
+        # mezcla con los suyos y sigue funcionando sin contexto, como en las pruebas.
+        "umbrales_empresa": db.umbrales_de(cod_empresa),
         **combinados,
     }
 

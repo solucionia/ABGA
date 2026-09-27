@@ -236,6 +236,33 @@ class RespuestaCartera(RespuestaOk):
     avisos: list[str] = Field(default_factory=list)
 
 
+class PeticionUmbral(BaseModel):
+    """Ajuste de un criterio de análisis para un cliente (`valor` vacío = volver al general)."""
+
+    cod_empresa: str = Field(..., description="Empresa a la que se aplica el criterio")
+    clave: str = Field(..., description="Criterio; la lista sale en GET /api/interno/umbrales")
+    valor: float | None = Field(None, description="Valor nuevo; vacío para dejarlo en el general")
+
+
+class RespuestaUmbrales(RespuestaOk):
+    """Los criterios que se aplican a un cliente, con su unidad, su rango y su origen."""
+
+    cod_empresa: str
+    empresa: str
+    umbrales: dict[str, Any]
+    ajustados: list[str]
+    n_ajustados: int
+
+
+class RespuestaUmbralesAjustados(RespuestaOk):
+    """Qué clientes tienen criterios propios (sólo los ajustes, para el panel interno)."""
+
+    clientes: list[dict[str, Any]]
+    n_clientes: int
+    n_criterios: int
+    criterios_disponibles: list[str]
+
+
 class RespuestaTrabajo(RespuestaOk):
     trabajo: dict[str, Any]
 

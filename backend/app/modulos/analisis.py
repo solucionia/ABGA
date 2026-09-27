@@ -63,14 +63,57 @@ FAMILIAS = [("contable", "Análisis contables"), ("fiscal", "Análisis fiscales"
             ("financiero", "Análisis financieros"), ("mercantil", "Análisis mercantiles"),
             ("laboral", "Análisis laborales")]
 
-# Umbrales (se declaran aquí para que se puedan discutir y ajustar sin tocar las reglas)
-UMBRAL_347 = 3005.06          # obligación de incluir a un tercero en el modelo 347
-UMBRAL_CONCENTRACION = 35.0   # % del saldo de clientes en un solo cliente
-UMBRAL_ANTIGUEDAD = 90        # días
-UMBRAL_ENDEUDAMIENTO = 75.0   # % sobre el activo
-TIPO_IS = 0.18                # tipo general del Impuesto de Sociedades (estimación del 202)
-# Magnitudes del deber de auditarse: hay que superar DOS de las TRES durante DOS ejercicios seguidos.
-AUDITORIA = {"activo": 2_500_000.0, "cifra_negocios": 5_000_000.0, "empleados": 50}
+# Umbrales: los criterios con los que se juzga un ejercicio. Aquí viven los de **por defecto**; cada
+# cliente puede tener los suyos —una empresa estacional no aguanta el mismo saldo viejo que una
+# industrial— y se guardan por empresa. El servicio los pasa en el contexto y `umbrales_efectivos()`
+# mezcla unos con otros, así que el módulo sigue calculando sin saber que existe una base de datos.
+UMBRALES_POR_DEFECTO: dict[str, float] = {
+    "347_operaciones": 3005.06,             # obligación de incluir a un tercero en el modelo 347
+    "concentracion_clientes": 35.0,         # % del saldo de clientes en un solo cliente
+    "antiguedad_clientes": 90,              # días
+    "endeudamiento": 75.0,                  # % sobre el activo
+    "tipo_impuesto_sociedades": 0.18,       # tipo general del Impuesto de Sociedades (modelo 202)
+    # Magnitudes del deber de auditarse: hay que superar DOS de las TRES durante DOS ejercicios
+    # seguidos. Van sueltas para poder ajustar una sin tocar las otras.
+    "auditoria_activo": 2_500_000.0,
+    "auditoria_cifra_negocios": 5_000_000.0,
+    "auditoria_empleados": 50,
+}
+
+# Lo que se puede ajustar por empresa: unidad, rango admitido (lo que se valida al guardar) y para qué
+# es (lo que se publica en el informe, para que el cliente sepa con qué se le está midiendo).
+ESQUEMA_UMBRALES: dict[str, dict[str, Any]] = {
+    "347_operaciones": {"unidad": "€", "min": 0.0, "max": 10_000_000.0,
+                        "para": "obligación de incluir a un tercero en el modelo 347"},
+    "concentracion_clientes": {"unidad": "%", "min": 1.0, "max": 100.0,
+                               "para": "peso máximo de un cliente sobre el saldo pendiente"},
+    "antiguedad_clientes": {"unidad": "días", "min": 1.0, "max": 1095.0, "entero": True,
+                            "para": "antigüedad a partir de la cual se avisa del saldo vivo"},
+    "endeudamiento": {"unidad": "%", "min": 1.0, "max": 100.0,
+                      "para": "deuda máxima sobre el activo total"},
+    "tipo_impuesto_sociedades": {"unidad": "tanto por uno", "min": 0.0, "max": 1.0,
+                                 "para": "estimación del modelo 202 sobre el resultado contable"},
+    "auditoria_activo": {"unidad": "€", "min": 0.0, "max": 1_000_000_000.0,
+                         "para": "límite de activo del deber de auditarse"},
+    "auditoria_cifra_negocios": {"unidad": "€", "min": 0.0, "max": 1_000_000_000.0,
+                                 "para": "límite de cifra de negocios del deber de auditarse"},
+    "auditoria_empleados": {"unidad": "empleados", "min": 1.0, "max": 100_000.0, "entero": True,
+                            "para": "límite de empleados del deber de auditarse"},
+}
+
+
+def umbrales_efectivos(ajustes: dict[str, Any] | None = None) -> dict[str, float]:
+    """Los criterios que se aplican de verdad: los de por defecto más los de esa empresa.
+
+    Una clave desconocida o un valor vacío se ignoran a propósito: el catálogo tiene que calcular
+    siempre, con ajustes, sin ellos o con una fila mal metida en la base.
+    """
+    efectivos = dict(UMBRALES_POR_DEFECTO)
+    for clave, valor in (ajustes or {}).items():
+        if clave in efectivos and valor not in (None, ""):
+            efectivos[clave] = (int(valor) if ESQUEMA_UMBRALES[clave].get("entero")
+                                else float(valor))
+    return efectivos
 
 
 @dataclass
@@ -109,26 +152,20 @@ def _meses_con_movimiento(lineas: Iterable[Linea], prefijos: Sequence[str]) -> s
     return {mes_de(l.fecha) for l in lineas if any(l.cuenta.startswith(p) for p in prefijos)}
 
 
-def umbrales() -> dict[str, Any]:
-    """Los umbrales que se están aplicando, con su unidad y para qué son.
+def umbrales(ajustes: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Los criterios que se están aplicando, con su unidad, su rango y de dónde sale cada uno.
 
-    Se publican con el resultado para que el informe, el panel y la conversación con ABGA hablen de
-    los mismos números: cambiar un criterio es cambiar una constante de arriba, no buscar el «35» o
-    el «90» por el fichero.
+    `origen` dice si el valor es el de por defecto o el que ABGA ha fijado para ese cliente: es lo que
+    permite discutir un rojo («se le está midiendo con el criterio pactado, no con el general»).
     """
+    efectivos = umbrales_efectivos(ajustes)
+    puestos = {c for c in (ajustes or {}) if c in efectivos}
     return {
-        "347_operaciones": {"valor": UMBRAL_347, "unidad": "€",
-                            "para": "obligación de incluir a un tercero en el modelo 347"},
-        "concentracion_clientes": {"valor": UMBRAL_CONCENTRACION, "unidad": "%",
-                                   "para": "peso máximo de un cliente sobre el saldo pendiente"},
-        "antiguedad_clientes": {"valor": UMBRAL_ANTIGUEDAD, "unidad": "días",
-                                "para": "antigüedad a partir de la cual se avisa del saldo vivo"},
-        "endeudamiento": {"valor": UMBRAL_ENDEUDAMIENTO, "unidad": "%",
-                          "para": "deuda máxima sobre el activo total"},
-        "tipo_impuesto_sociedades": {"valor": TIPO_IS, "unidad": "tanto por uno",
-                                     "para": "estimación del modelo 202 sobre el resultado contable"},
-        "auditoria": {"valor": dict(AUDITORIA), "unidad": "magnitudes",
-                      "para": "límites de activo, cifra de negocios y empleados del deber de auditar"},
+        clave: {"valor": valor, "unidad": ESQUEMA_UMBRALES[clave]["unidad"],
+                "para": ESQUEMA_UMBRALES[clave]["para"],
+                "min": ESQUEMA_UMBRALES[clave]["min"], "max": ESQUEMA_UMBRALES[clave]["max"],
+                "origen": "empresa" if clave in puestos else "defecto"}
+        for clave, valor in efectivos.items()
     }
 
 
@@ -184,6 +221,7 @@ def _duplicados(lineas: list[Linea]) -> dict[str, Any]:
 
 def _contexto(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str, Any]:
     year = int(ctx.get("year") or 0)
+    u = umbrales_efectivos(ctx.get("umbrales_empresa"))    # los criterios de esta empresa
     lineas = list(por_anio.get(year) or [])
     anterior = list(por_anio.get(year - 1) or [])
     saldos = saldos_por_cuenta(lineas)
@@ -191,12 +229,12 @@ def _contexto(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str
     ref = max((l.fecha for l in lineas), default=0)
     pg = mod_pyg.calcular_lineas(lineas, anterior)
     return {
-        "year": year, "ctx": ctx, "lineas": lineas, "anterior": anterior,
+        "year": year, "ctx": ctx, "u": u, "lineas": lineas, "anterior": anterior,
         "saldos": saldos, "meses": meses,
         "cuadre": comprobar_cuadre(lineas),
         "pg": pg,
         "anomalias": mod_conciliacion.detectar_anomalias(lineas),
-        "resumen_cuentas": mod_conciliacion.resumen_cuentas(lineas, ref, dias_aviso=UMBRAL_ANTIGUEDAD),
+        "resumen_cuentas": mod_conciliacion.resumen_cuentas(lineas, ref, dias_aviso=int(u["antiguedad_clientes"])),
         "duplicados": _duplicados(lineas),
         "n_lineas": len(lineas),
         "n_asientos": len({(l.serie, l.documento, l.fecha) for l in lineas}),
@@ -496,29 +534,31 @@ def _r_modelo_347(c: dict) -> dict:
     """Las operaciones del 347 son las facturas, no los cobros ni los pagos: en las cuentas de
     clientes (deudoras) se suma el Debe y en las de proveedores (acreedoras) el Haber. Sumar
     Debe+Haber contaría dos veces cada factura."""
+    u = c["u"]
     totales: dict[str, float] = defaultdict(float)
     for l in c["lineas"]:
         if l.cuenta.startswith(("43", "44")):
             totales[nombre_tercero(l.tercero, l.descripcion)] += l.debe
         elif l.cuenta.startswith(("40", "41")):
             totales[nombre_tercero(l.tercero, l.descripcion)] += l.haber
-    obligados = sorted(([n, round(v, 2)] for n, v in totales.items() if v > UMBRAL_347),
+    obligados = sorted(([n, round(v, 2)] for n, v in totales.items() if v > u["347_operaciones"]),
                        key=lambda f: -f[1])
     if not obligados:
-        return _res(OK, f"Ningún tercero supera los {fmt(UMBRAL_347)} de operaciones del modelo 347.")
-    return _res(AVISO, f"{len(obligados)} tercero(s) superan los {fmt(UMBRAL_347)} de operaciones y "
+        return _res(OK, f"Ningún tercero supera los {fmt(u['347_operaciones'])} de operaciones del modelo 347.")
+    return _res(AVISO, f"{len(obligados)} tercero(s) superan los {fmt(u['347_operaciones'])} de operaciones y "
                        "hay que incluirlos en el modelo 347.",
                 datos=obligados[:12],
                 recomendacion="Comprobarlo con los totales del 347 presentado.")
 
 
 def _r_modelo_202(c: dict) -> dict:
+    u = c["u"]
     base = float(c["pg"].get("resultadoNeto") or 0.0)
     if not c["n_lineas"]:
         return _res(NO_EVALUABLE, "no hay apuntes en el ejercicio.")
-    cuota = round(max(0.0, base) * TIPO_IS, 2)
+    cuota = round(max(0.0, base) * u["tipo_impuesto_sociedades"], 2)
     return _res(AVISO, f"Pago fraccionado del Impuesto de Sociedades (modelo 202) estimado en "
-                       f"{fmt(cuota)} al {fmt_pct(TIPO_IS * 100)} sobre el resultado de {fmt(base)}.",
+                       f"{fmt(cuota)} al {fmt_pct(u['tipo_impuesto_sociedades'] * 100)} sobre el resultado de {fmt(base)}.",
                 importe=cuota,
                 recomendacion="Es una ESTIMACIÓN sobre el resultado contable: la base del 202 sale "
                               "del resultado de la cuenta de PyG del periodo, no de la base "
@@ -563,6 +603,7 @@ def _r_pmp(c: dict) -> dict:
 
 
 def _r_concentracion(c: dict) -> dict:
+    u = c["u"]
     filas = [t for t in por_tercero(c["lineas"], ["43", "44"]) if t["saldo"] > 0.01]
     total = sum(t["saldo"] for t in filas)
     if total <= 0 or not filas:
@@ -570,8 +611,8 @@ def _r_concentracion(c: dict) -> dict:
                                   "concentración.")
     primero = max(filas, key=lambda t: t["saldo"])
     pct = primero["saldo"] / total * 100
-    if pct <= UMBRAL_CONCENTRACION:
-        return _res(OK, f"Ningún cliente concentra más del {fmt_pct(UMBRAL_CONCENTRACION)} del saldo "
+    if pct <= u["concentracion_clientes"]:
+        return _res(OK, f"Ningún cliente concentra más del {fmt_pct(u['concentracion_clientes'])} del saldo "
                         f"pendiente (el mayor, {fmt_pct(pct)}).")
     return _res(AVISO if pct < 50 else ALERTA,
                 f"{primero['tercero']} concentra el {fmt_pct(pct)} del saldo pendiente de cobro "
@@ -581,21 +622,22 @@ def _r_concentracion(c: dict) -> dict:
 
 
 def _r_antiguedad(c: dict) -> dict:
+    u = c["u"]
     filas = [f for f in c["resumen_cuentas"]
              if str(f.get("cuenta", "")).startswith(("43", "44")) and abs(f.get("saldo") or 0.0) > 0.01]
-    viejos = [f for f in filas if (f.get("antiguedad_dias") or 0) > UMBRAL_ANTIGUEDAD]
+    viejos = [f for f in filas if (f.get("antiguedad_dias") or 0) > u["antiguedad_clientes"]]
     if not filas:
         return _res(NO_EVALUABLE, "no hay cuentas de clientes con saldo pendiente.")
     total = sum(abs(f.get("saldo") or 0.0) for f in viejos)
     if not viejos:
         return _res(OK, f"Ninguna de las {len(filas)} cuenta(s) de clientes con saldo supera los "
-                        f"{UMBRAL_ANTIGUEDAD} días de antigüedad.")
+                        f"{u['antiguedad_clientes']} días de antigüedad.")
     orden = sorted(viejos, key=lambda f: -(abs(f.get("saldo") or 0.0)))
     datos = [[f.get("cuenta", ""), round(f.get("saldo") or 0.0, 2), f.get("antiguedad_dias") or 0,
               f.get("fecha_antigua_es", "")] for f in orden]
     return _res(AVISO if total < 10000 else ALERTA,
                 f"{len(viejos)} cuenta(s) de clientes con movimientos de más de "
-                f"{UMBRAL_ANTIGUEDAD} días y saldo vivo: {fmt(total)}.",
+                f"{u['antiguedad_clientes']} días y saldo vivo: {fmt(total)}.",
                 importe=round(total, 2), datos=datos[:12],
                 recomendacion="Revisar el cobro y valorar la dotación por deterioro.")
 
@@ -604,13 +646,14 @@ def _r_endeudamiento(c: dict) -> dict:
     activo = float(c["pg"].get("totalActivo") or 0.0)
     if activo <= 0:
         return _res(NO_EVALUABLE, "el total de activo es cero o no se ha podido calcular.")
+    u = c["u"]
     deuda = sum(s.acreedor for c2, s in c["saldos"].items()
                 if c2.startswith(("16", "17", "40", "41", "50", "51", "52", "53", "55")))
     pct = deuda / activo * 100
-    nivel = OK if pct <= UMBRAL_ENDEUDAMIENTO else (AVISO if pct <= 90 else ALERTA)
+    nivel = OK if pct <= u["endeudamiento"] else (AVISO if pct <= 90 else ALERTA)
     return _res(nivel, f"Endeudamiento del {fmt_pct(pct)} sobre un activo de {fmt(activo)} "
                        f"({fmt(deuda)} de deuda).", magnitud={"valor": round(pct, 1), "unidad": "%"},
-                recomendacion="Por encima del 75% el margen de maniobra es pequeño.")
+                recomendacion="Por encima del límite fijado, el margen de maniobra es pequeño.")
 
 
 def _r_fondo_maniobra(c: dict) -> dict:
@@ -631,7 +674,8 @@ def _r_fondo_maniobra(c: dict) -> dict:
 def _r_auditoria(c: dict) -> dict:
     activo = float(c["pg"].get("totalActivo") or 0.0)
     cifra = suma_acreedor(c["saldos"], mod_pyg.P_INGRESOS_ACTIVIDAD, recortar=False)
-    supera = [activo > AUDITORIA["activo"], cifra > AUDITORIA["cifra_negocios"]]
+    u = c["u"]
+    supera = [activo > u["auditoria_activo"], cifra > u["auditoria_cifra_negocios"]]
     n = sum(1 for s in supera if s)
     if n >= 2:
         return _res(AVISO, f"Se superan dos de los tres límites de auditoría (activo {fmt(activo)} y "
@@ -760,21 +804,21 @@ REGLAS: list[Regla] = [
           "días que se tarda de media en pagar",
           "saldo de proveedores entre compras, por 365", _r_pmp),
     Regla("concentracion", "financiero", "Concentración de clientes",
-          "que ningún cliente pese más del 35% del saldo pendiente de cobro",
+          "que ningún cliente pese más del límite de concentración fijado (por defecto, el 35%)",
           "mayor saldo por tercero sobre el total de clientes", _r_concentracion),
     Regla("antiguedad_clientes", "financiero", "Antigüedad de la deuda de clientes",
-          "importes pendientes con más de 90 días",
+          "importes pendientes con más días de antigüedad de los fijados (por defecto, 90)",
           "antigüedad del saldo por cuenta según la conciliación", _r_antiguedad),
     Regla("endeudamiento", "financiero", "Endeudamiento",
-          "que la deuda no supere el 75% del activo",
+          "que la deuda no supere el límite fijado sobre el activo (por defecto, el 75%)",
           "deuda con entidades, proveedores y acreedores sobre el activo total", _r_endeudamiento),
     Regla("fondo_maniobra", "financiero", "Fondo de maniobra",
           "que el activo corriente cubra el pasivo corriente",
           "activo corriente menos pasivo corriente (del balance)", _r_fondo_maniobra),
     Regla("auditoria", "mercantil", "Obligación de auditarse",
           "superar dos de los tres límites durante dos ejercicios seguidos",
-          f"activo > {fmt(AUDITORIA['activo'])}, cifra de negocios > "
-          f"{fmt(AUDITORIA['cifra_negocios'])} y más de {AUDITORIA['empleados']} empleados",
+          "activo, cifra de negocios y empleados frente a los límites fijados (por defecto, "
+          "activo > 2.500.000 €, cifra de negocios > 5.000.000 € y más de 50 empleados)",
           _r_auditoria),
     Regla("concurso", "mercantil", "Causa de disolución",
           "que el patrimonio neto no baje de la mitad del capital social",
@@ -870,7 +914,7 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str,
         "seleccion": seleccion,
         "filtro": {"familia": familia, "nivel": nivel, "aplicado": bool(familia or nivel),
                    "n_seleccionados": len(seleccion), "n_total": len(hallazgos)},
-        "umbrales": umbrales(),
+        "umbrales": umbrales(ctx.get("umbrales_empresa")),
         "por_familia": {f: por_familia.get(f, []) for f, _ in FAMILIAS},
         "n_lineas": c["n_lineas"],
         "cuadre": c["cuadre"],
@@ -1056,17 +1100,20 @@ def _titulo_familia(clave: str | None) -> str:
 
 
 def _texto_umbrales(tabla: dict[str, Any]) -> str:
-    """Los umbrales en una línea, en el mismo orden en que se declaran arriba."""
+    """Los criterios en una línea, en el mismo orden en que se declaran arriba.
+
+    El que se ha ajustado para ese cliente va marcado: si un informe sale en rojo por un criterio
+    pactado y no por el general, quien lo lee tiene que poder verlo en el propio informe.
+    """
     trozos = []
     for v in tabla.values():
         valor = v.get("valor")
-        if isinstance(valor, dict):
-            texto = ", ".join(f"{k}: {fmt(x)}" for k, x in valor.items())
-        elif v.get("unidad") == "%":
+        if v.get("unidad") == "%":
             texto = fmt_pct(float(valor))
         elif v.get("unidad") == "tanto por uno":
             texto = fmt_pct(float(valor) * 100)
         else:
             texto = f"{valor} {v.get('unidad', '')}".strip()
-        trozos.append(f"{v.get('para', '')} → {texto}")
+        ajustado = " (ajustado para este cliente)" if v.get("origen") == "empresa" else ""
+        trozos.append(f"{v.get('para', '')} → {texto}{ajustado}")
     return "; ".join(trozos)

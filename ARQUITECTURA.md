@@ -43,7 +43,7 @@ propios (ver §4).
 |---|---|
 | `main.py` de **581 líneas** mezclando transporte, negocio y SQL | **74 líneas** que sólo montan routers, manejadores y estáticos. Los casos de uso viven en `app/aplicacion/`, los contratos en `app/api/esquemas.py` |
 | `POST /api/interno/usuarios` declarado **dos veces** (la segunda, inalcanzable) | Un solo endpoint, y una prueba que falla si vuelve a haber rutas duplicadas |
-| 24 rutas con `payload: dict = Body(...)`; `/docs` sin contrato y un año no numérico daba **500** | **33 esquemas** Pydantic publicados en el OpenAPI; el año fuera de rango o no numérico responde **422** con el campo que falla. Un campo de más también es error |
+| 24 rutas con `payload: dict = Body(...)`; `/docs` sin contrato y un año no numérico daba **500** | **42 esquemas** Pydantic publicados en el OpenAPI; el año fuera de rango o no numérico responde **422** con el campo que falla. Un campo de más también es error |
 | Tres convenciones de error (y el `detail` de FastAPI **que el portal no leía**) | Un único cuerpo `{status, error, codigo}` con códigos estables, para todos los errores incluidos los 404 de ruta |
 | CORS con `allow-origins=*` **y** credenciales: reflejaba cualquier `Origin` | CORS cerrado por defecto (el panel se sirve del mismo origen); sólo se abre con `CORS_ORIGENES` de dominios concretos, y `*` se ignora |
 | El panel de usuarios mostraba «Usuario **undefined** creado (**undefined**)» | La respuesta lleva `email`, `rol` y `password` — lo que el frontal pinta de verdad |
@@ -144,7 +144,7 @@ verde, incluidos los 12 verificadores heredados):
 
 | Trabajo | Resultado |
 |---|---|
-| Contrato tipado | `app/api/esquemas.py`: 10 modelos de petición y 23 de respuesta, **33 esquemas publicados** en el OpenAPI. El año fuera de rango o no numérico responde **422** con el campo que falla; un campo de más también es error (`extra="forbid"`) |
+| Contrato tipado | `app/api/esquemas.py`: 12 modelos de petición y 29 de respuesta, **42 esquemas publicados** en el OpenAPI. El año fuera de rango o no numérico responde **422** con el campo que falla; un campo de más también es error (`extra="forbid"`) |
 | Un solo formato de error | `app/errores.py` (vocabulario, con estado y **código estable**) + `app/api/manejadores.py` (traducción). El `detail` de FastAPI ya no se pierde en la pantalla, y una ruta `/api/…` que no existe contesta JSON, no el 404 del servidor de ficheros |
 | Capas de verdad | `api/rutas/{sesion,catalogo,informes,interno}` → `aplicacion/{sesion,usuarios,informes,catalogo}` → `dominio` (ledger, informes, modulos) e infraestructura. `main.py` pasó de **581 a 74 líneas** |
 | Ruta muerta | `POST /api/interno/usuarios` era el mismo endpoint declarado dos veces; queda uno, con la forma que el panel pinta (`email`, `rol`, `password`) |
@@ -364,9 +364,11 @@ constantes del principio del fichero. Lo que faltaba era la **capa de producto**
   Ahora el resultado trae `seleccion` (lo que pasa el filtro), `filtro` (qué se aplicó y cuántas
   quedaron fuera) y el **resumen intacto**: el semáforo cuenta siempre todas las comprobaciones, si se
   recortara con el filtro estaría mintiendo.
-- **`data.umbrales`**: los umbrales aplicados con su unidad y para qué son (347, concentración,
-  antigüedad, endeudamiento, tipo del Impuesto de Sociedades, límites de auditoría). Cambiar un criterio
-  es cambiar una constante de arriba, y el informe dice cuál se aplicó en vez de esconderlo en el código.
+- **`data.umbrales`**: los criterios aplicados con su unidad, su **rango admitido** y para qué son
+  (347, concentración, antigüedad, endeudamiento, tipo del Impuesto de Sociedades, límites de auditoría),
+  con `origen: defecto|empresa`. El informe no esconde con qué se le mide: lo publica, y marca el
+  criterio que se ha pactado con ese cliente — que es lo que permite discutir un rojo sin abrir el
+  código.
 - **`GET /api/interno/cartera?year&limite&desde`** (sólo rol interno): la vista que convierte el
   despacho en asesoría — qué clientes tienen el semáforo en rojo, por cuánto y por qué, ordenados por
   gravedad. Con 391 clientes eso sólo es posible con dos decisiones: **no se le pide nada al ERP** (sólo
@@ -387,9 +389,37 @@ saldos con socios», «sin deudas con Hacienda»), y no encontrar nada es correc
 datos… pero decir «todo bien» de un ejercicio del que no se sabe nada es justo lo que la casa no hace.
 Ahora, sin apuntes, todas las comprobaciones salen en gris con el motivo. Está fijado en una prueba.
 
-**Pendiente de la Fase 6**: umbrales **por cliente** (hoy son constantes del módulo: un cliente con
-actividad estacional no se mide igual que uno industrial), acercarse a los ~50 análisis (hay 32), dar
-destino a los avisos (correo o Teams, en `app/alertas.py`) y el frontal que pinte el semáforo (Fase 5).
+**Criterios de análisis ajustados por cliente (Fase 6, 27/09/2026)**
+
+Los umbrales eran **constantes del módulo**: cambiar el 90 de antigüedad era editar código, desplegar y
+cambiar el criterio a los 391 clientes a la vez. Un cliente con actividad estacional no aguanta el mismo
+saldo viejo que una industrial, y discutir un rojo exige poder decir «se le mide con el criterio que
+pactamos, no con el general».
+
+- **Se guarda sólo lo que se aparta del general**, una fila por empresa y criterio (`umbrales_empresa`,
+  migración `0003`, con quién y cuándo). Sin fila se aplican los valores de por defecto: migrar no
+  cambia ningún informe, y añadir un criterio nuevo al catálogo no obliga a rellenar nada — ni se
+  duplica el valor general en 391 filas, que es como envejecen estas tablas.
+- **El rango lo declara el propio catálogo** (`ESQUEMA_UMBRALES`: unidad, mínimo, máximo y si es entero).
+  La validación vive en el caso de uso, así que ninguna pantalla puede guardar un 300% de concentración:
+  fuera de rango es un 400 y la empresa se queda como estaba. El rango se publica, así que el panel no
+  tiene que replicarlo.
+- **El ajuste manda en el cálculo, no en la ficha.** Las reglas leen los criterios del contexto, y hay
+  pruebas que lo miden en los dos sentidos: subir el umbral del 347 deja la regla en verde y bajarlo la
+  deja en naranja; el tipo del Impuesto de Sociedades del 25% cambia la estimación del 202; bajando dos
+  límites de auditoría la regla pasa de «no se puede determinar» a «hay que auditarse».
+- **Los criterios viajan en el contexto, no se consultan desde el dominio.** El módulo no puede tocar la
+  base de datos —lo comprueba `test_arquitectura`—, así que el servicio añade `umbrales_empresa` al
+  contexto y el módulo mezcla esos ajustes con sus valores por defecto. Consecuencia útil: el catálogo
+  sigue calculando sin base de datos (pruebas, informes sueltos) y una fila mal metida en la tabla
+  **se ignora** en vez de tumbar el informe; está fijado en una prueba.
+- **`GET/POST /api/interno/umbrales` y `GET /api/interno/umbrales/ajustados`** (sólo rol interno): ver
+  con qué se mide un cliente, ajustarlo (con `valor` vacío se vuelve al general) y ver de un vistazo qué
+  clientes tienen criterios propios. Ese último listado incluye el valor general al lado: si media
+  cartera tiene el mismo criterio cambiado, el que está mal es el general.
+
+**Pendiente de la Fase 6**: acercarse a los ~50 análisis (hay 32), dar destino a los avisos (correo o
+Teams, en `app/alertas.py`) y el frontal que pinte el semáforo y ajuste los criterios (Fase 5).
 
 ## 5. Plan por fases (el orden es por riesgo, no por vistosidad)
 
@@ -401,7 +431,7 @@ destino a los avisos (correo o Teams, en `app/alertas.py`) y el frontal que pint
 | **3** ✅ | Datos y continuidad: migraciones con alembic ✅, copia de seguridad del PostgreSQL de Coolify **con restauración probada** ✅, entorno de previsualización con `APICON_SOLO_CACHE=1` ✅ (y producción leyendo el ERP) | Un fallo de datos del cliente no se arregla con código | hecho |
 | **4** ✅ | Observabilidad: identificador de petición (`X-Request-ID`) en las respuestas, en las líneas de registro y en `ejecuciones`; `LOG_FORMATO=json`; `GET /api/interno/metricas`; tabla `avisos` con `cobertura_parcial`/`error_calculo`/`error_erp`, agrupando repetidos y con `/api/salud` publicando los pendientes | Hace visibles los fallos que hoy sólo se ven si alguien mira | hecho |
 | **5** | Frontend: partir `app.js` en módulos ES y probar las funciones puras (sin framework); valorar Vite+Vue/React **sólo** cuando lleguen los ~50 análisis con semáforo | El estado de la UI se complica de verdad ahí, no antes | 2 días |
-| **6** ✅ | Producto: el catálogo declarativo de análisis (32 reglas, ya existía) **más** su capa de producto: `GET /api/analisis` con filtros y umbrales, `GET /api/interno/cartera` (semáforo de todos los clientes, sólo caché), aviso `analisis_rojo` y camino sin ERP (`ejecutar_solo_cache`) | Es el salto a «plataforma de asesoría» que pidió ABGA, y encaja sin tocar el borde | hecho (queda: umbrales por cliente y acercarse a los ~50 análisis) |
+| **6** ✅ | Producto: el catálogo declarativo de análisis (32 reglas, ya existía) **más** su capa de producto: `GET /api/analisis` con filtros y **criterios ajustables por cliente**, `GET /api/interno/cartera` (semáforo de todos los clientes, sólo caché), aviso `analisis_rojo` y camino sin ERP (`ejecutar_solo_cache`) | Es el salto a «plataforma de asesoría» que pidió ABGA, y encaja sin tocar el borde | hecho (queda: acercarse a los ~50 análisis y pintar el semáforo en el frontal) |
 
 **Lo que no se va a hacer** (y por qué): microservicios, colas o Kubernetes (un contenedor y un
 PostgreSQL son lo correcto para este tamaño y este equipo); ORM completo sobre el SQL actual (es
@@ -423,7 +453,9 @@ repositorios tipados); reescribir el frontend antes de que crezca.
 6. **Las capas se comprueban, no se confían**: `tests/test_arquitectura.py` lee los `import` reales
    (con `ast`) y falla si la capa HTTP toca la base de datos, si el dominio importa infraestructura,
    si la aplicación depende de HTTP o si `main.py` crece. Comprobado inyectando tres violaciones a
-   propósito: las tres saltan.
+   propósito: las tres saltan. Esa regla tiene consecuencia práctica: los criterios de análisis por
+   cliente llegan al módulo **por el contexto** (`servicio` los lee de la base), no consultándolos
+   desde el dominio.
 
 ## 7. Cómo se comprueba que esto sigue siendo verdad
 

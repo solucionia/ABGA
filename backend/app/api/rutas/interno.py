@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from ...aplicacion import catalogo
+from ...aplicacion import umbrales as criterios
 from ...aplicacion import usuarios as casos
 from ...errores import EntradaInvalida
 from ..dependencias import usuario_interno
@@ -23,6 +24,7 @@ from ..esquemas import (
     PeticionEmpresa,
     PeticionEmpresasDeUsuario,
     PeticionPin,
+    PeticionUmbral,
     PeticionUsuario,
     RespuestaAvisoAtendido,
     RespuestaAvisos,
@@ -35,6 +37,8 @@ from ..esquemas import (
     RespuestaMetricas,
     RespuestaPin,
     RespuestaResumenInterno,
+    RespuestaUmbrales,
+    RespuestaUmbralesAjustados,
     RespuestaUsuario,
     RespuestaUsuarios,
     RespuestaValidacion,
@@ -159,6 +163,38 @@ def avisos(incluir_atendidos: bool = Query(False), limite: int = Query(200, ge=1
 def atender_aviso(peticion: PeticionAviso,
                   us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaAvisoAtendido:
     return RespuestaAvisoAtendido(**catalogo.atender_aviso(peticion.id, us["email"]))
+
+
+@router.get("/umbrales", response_model=RespuestaUmbrales, responses=ERRORES,
+            summary="Criterios de análisis de un cliente")
+def ver_umbrales(cod_empresa: str = Query(..., description="Empresa"),
+                 us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaUmbrales:
+    """Con qué criterios se juzga a ese cliente y de dónde sale cada uno.
+
+    Se publica además en cada informe (`data.umbrales`), así que el cliente puede ver con qué se le
+    mide sin pedir nada: aquí está además lo que se puede cambiar y hasta dónde.
+    """
+    return RespuestaUmbrales(**criterios.estado(cod_empresa))
+
+
+@router.post("/umbrales", response_model=RespuestaUmbrales, responses=ERRORES,
+             summary="Ajustar un criterio de análisis")
+def ajustar_umbral(peticion: PeticionUmbral,
+                   us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaUmbrales:
+    """Ajusta un criterio para un cliente; con `valor` vacío, lo devuelve al general.
+
+    El rango lo fija el propio catálogo (`ESQUEMA_UMBRALES`): fuera de él es un 400, no un informe
+    raro. Entra en la siguiente ejecución y queda marcado en el informe como criterio del cliente.
+    """
+    return RespuestaUmbrales(**criterios.fijar(peticion.cod_empresa, peticion.clave,
+                                               peticion.valor, actor=us["email"]))
+
+
+@router.get("/umbrales/ajustados", response_model=RespuestaUmbralesAjustados, responses=ERRORES,
+            summary="Clientes con criterios propios")
+def ver_umbrales_ajustados(us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaUmbralesAjustados:
+    """Sólo los ajustes de toda la cartera, para revisar que ninguno se ha ido de las manos."""
+    return RespuestaUmbralesAjustados(**criterios.ajustados())
 
 
 @router.post("/cache", response_model=RespuestaCacheBorrada, responses=ERRORES,

@@ -232,6 +232,45 @@ def tiene_pin(cod_empresa: str) -> bool:
     return bool(pin_guardado(cod_empresa))
 
 
+# ---------- criterios de análisis ajustados por empresa ----------
+#
+# Los umbrales del catálogo tienen un valor general y cada cliente puede tener el suyo (una empresa
+# estacional no aguanta el mismo saldo viejo que una industrial). Aquí se guarda **sólo lo que se
+# aparta del general**: si un cliente no tiene fila se le aplican los de por defecto, y volver al
+# general es borrar la fila. Así añadir un criterio nuevo al catálogo no obliga a dar de alta nada.
+
+def umbrales_de(cod_empresa: str) -> dict[str, float]:
+    """Los criterios que esa empresa tiene apartados del general (los que no, no aparecen)."""
+    filas = cache.conectar().execute(
+        "SELECT clave, valor FROM umbrales_empresa WHERE cod_empresa=?",
+        (str(cod_empresa),)).fetchall()
+    return {str(f["clave"]): float(f["valor"]) for f in filas}
+
+
+def fijar_umbral(cod_empresa: str, clave: str, valor: float, actor: str = "") -> None:
+    bd.upsert("umbrales_empresa",
+              ("cod_empresa", "clave", "valor", "actualizado", "actualizado_por"),
+              ("cod_empresa", "clave"),
+              (str(cod_empresa), str(clave), float(valor), cache.ahora(), str(actor or "")))
+
+
+def quitar_umbral(cod_empresa: str, clave: str) -> bool:
+    """Devuelve el criterio al general. True si había algo que quitar."""
+    con = cache.conectar()
+    cur = con.execute("DELETE FROM umbrales_empresa WHERE cod_empresa=? AND clave=?",
+                      (str(cod_empresa), str(clave)))
+    con.commit()
+    return bool(cur.rowcount)
+
+
+def umbrales_ajustados() -> list[dict[str, Any]]:
+    """Todos los ajustes, para el panel interno: quién tiene criterios propios y cuáles."""
+    filas = cache.conectar().execute(
+        "SELECT cod_empresa, clave, valor, actualizado, actualizado_por FROM umbrales_empresa"
+        " ORDER BY cod_empresa, clave").fetchall()
+    return [dict(f) for f in filas]
+
+
 # ---------- registro de ejecuciones ----------
 
 def registrar_ejecucion(*, cod_empresa: str, ejercicio: int | None, modulos: str, origen: str,

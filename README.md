@@ -83,7 +83,7 @@ Contrato para añadir uno nuevo: `backend/CONTRATO-MODULOS.md`.
 
 ## API
 
-Todo el contrato está tipado con Pydantic y publicado en `/docs` (**39 esquemas** y 27 rutas,
+Todo el contrato está tipado con Pydantic y publicado en `/docs` (**42 esquemas** y 32 rutas,
 contados sobre el `openapi()` de la aplicación): el año fuera de
 rango o no numérico responde **422** diciendo qué campo falla, y un campo de más también es error.
 
@@ -99,6 +99,9 @@ rango o no numérico responde **422** diciendo qué campo falla, y un campo de m
 | GET | `/api/interno/resumen` | panel de ABGA: ejecuciones, caché, módulos, usuarios |
 | GET | `/api/interno/metricas` · `/avisos` · POST `/avisos/atender` | uso y salud (informes hechos, de caché, incompletos, fallos) y los avisos, con su cierre |
 | GET | `/api/interno/cartera?year[&limite][&desde]` | semáforo de análisis de todos los clientes, ordenado por gravedad (sólo caché) |
+| GET | `/api/interno/umbrales?cod_empresa` | con qué criterios se mide a ese cliente, de dónde sale cada uno y hasta dónde se puede ajustar |
+| POST | `/api/interno/umbrales` | ajusta un criterio de ese cliente (`valor` vacío = volver al general); fuera del rango, 400 |
+| GET | `/api/interno/umbrales/ajustados` | qué clientes tienen criterios propios, con el valor general al lado (sólo ajustes) |
 | POST | `/api/interno/cache` · `/usuarios` · `/empresas` · `/pin` | administración (sólo rol interno) |
 | GET | `/api/salud` · `/api/cache` | diagnóstico |
 
@@ -234,8 +237,13 @@ buscar ausencias, que es decir «todo bien» de lo que no se sabe).
 curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025' | jq '.data.resumen'
 # sólo lo que exige actuación, y las familias financieras
 curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025&nivel=alerta&familia=financiero' | jq '.data.seleccion[] | .titulo'
-# los umbrales que se están aplicando (se publican con el resultado)
+# los criterios que se están aplicando (se publican con el resultado, con su origen)
 curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025' | jq '.data.umbrales'
+
+# con qué se mide a un cliente, y ajustarlo (valor null = volver al general)
+curl -s -b cookies.txt 'https://…/api/interno/umbrales?cod_empresa=6091' | jq '{ajustados, umbrales: (.umbrales | map_values(.valor))}'
+curl -s -b cookies.txt -X POST 'https://…/api/interno/umbrales' -H 'Content-Type: application/json' \
+  -d '{"cod_empresa":"6091","clave":"antiguedad_clientes","valor":120}' | jq '.ajustados'
 # la cartera del despacho: quién está en rojo, por cuánto y por qué (sólo rol interno)
 curl -s -b cookies.txt 'https://…/api/interno/cartera?year=2025&limite=30' | jq '.filas[] | {empresa, n_rojo, importe_riesgo, rojos}'
 ```

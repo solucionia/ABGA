@@ -129,13 +129,21 @@ def test_el_modulo_no_admite_filtros_inventados(entorno: object) -> None:
 
 
 def test_los_umbrales_salen_publicados(entorno: object) -> None:
-    """Cambiar un criterio es cambiar una constante de arriba, y el resultado dice cuál se aplicó."""
+    """Cada criterio sale con su valor, su unidad, su rango y de dónde viene.
+
+    Ese «de dónde viene» (`origen`) es lo que permite discutir un rojo: si el criterio es el general o
+    el que se pactó con ese cliente. Aquí, sin ajustes, todo es de por defecto.
+    """
     u = analisis_de()["umbrales"]
     assert u["347_operaciones"]["valor"] == pytest.approx(3005.06)
     assert u["antiguedad_clientes"]["valor"] == 90
-    assert u["auditoria"]["valor"]["activo"] == 2_500_000.0
+    assert u["auditoria_activo"]["valor"] == 2_500_000.0
+    assert u["auditoria_empleados"]["valor"] == 50
+    assert mod.ESQUEMA_UMBRALES.keys() == u.keys(), "lo ajustable y lo publicado tienen que ser lo mismo"
     for clave, v in u.items():
         assert v["unidad"] and v["para"], f"umbral sin unidad o sin explicación: {clave}"
+        assert v["min"] < v["max"], f"rango imposible en {clave}"
+        assert v["origen"] == "defecto", f"{clave} sale como ajustado sin haber ajustes"
 
 
 # ---------------------------------------------------------------- avisos de los rojos

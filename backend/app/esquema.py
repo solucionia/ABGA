@@ -17,6 +17,7 @@ TABLAS = (
     "permisos",
     "tokens",
     "trabajos",
+    "umbrales_empresa",
     "usuarios",
 )
 
