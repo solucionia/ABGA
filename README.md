@@ -235,8 +235,9 @@ propósito: no hay destino configurado, y eso se añadiría en un solo sitio (`a
 
 `analisis` no es un informe más: es un **catálogo de comprobaciones** que se ejecutan sobre los apuntes
 y salen clasificadas por riesgo (rojo · actuar, naranja · revisar, verde · correcto, gris · los apuntes
-no traen el dato). Hoy son **32 comprobaciones** de cinco familias (contable, fiscal, financiero,
-mercantil, laboral) y **añadir una es declarar una entrada en `REGLAS`** —qué comprueba, cómo se
+no traen el dato). Hoy son **50 comprobaciones** de cinco familias (18 contables, 12 fiscales, 13
+financieras, 6 mercantiles y 1 laboral, que sale en gris porque los apuntes no traen plantilla) y
+**añadir una es declarar una entrada en `REGLAS`** —qué comprueba, cómo se
 calcula y una función que devuelve el nivel—, nada más. Una regla que falle no tumba el informe: sale
 en gris diciendo qué pasó.
 

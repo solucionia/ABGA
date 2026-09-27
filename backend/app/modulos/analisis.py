@@ -78,6 +78,11 @@ UMBRALES_POR_DEFECTO: dict[str, float] = {
     "auditoria_activo": 2_500_000.0,
     "auditoria_cifra_negocios": 5_000_000.0,
     "auditoria_empleados": 50,
+    # Segunda tanda (Fase 8): los criterios de las comprobaciones nuevas.
+    "iva_a_compensar": 3_000.0,             # € de IVA a favor a partir del cual se avisa
+    "concentracion_proveedores": 35.0,      # % del saldo de proveedores en un solo proveedor
+    "carga_financiera": 50.0,               # % de los gastos financieros sobre el EBIT
+    "rotacion_existencias": 180,            # días que tardan las existencias en rotar
 }
 
 # Lo que se puede ajustar por empresa: unidad, rango admitido (lo que se valida al guardar) y para qué
@@ -97,8 +102,16 @@ ESQUEMA_UMBRALES: dict[str, dict[str, Any]] = {
                          "para": "límite de activo del deber de auditarse"},
     "auditoria_cifra_negocios": {"unidad": "€", "min": 0.0, "max": 1_000_000_000.0,
                                  "para": "límite de cifra de negocios del deber de auditarse"},
-    "auditoria_empleados": {"unidad": "empleados", "min": 1.0, "max": 100_000.0, "entero": True,
-                            "para": "límite de empleados del deber de auditarse"},
+    "auditoria_empleados": {"unidad": "empleados", "min": 1, "max": 100000, "entero": True,
+                             "para": "número de empleados del deber de auditarse"},
+    "iva_a_compensar": {"unidad": "€", "min": 0.0, "max": 10_000_000.0,
+                        "para": "IVA a favor a partir del cual se pide revisar las autoliquidaciones"},
+    "concentracion_proveedores": {"unidad": "%", "min": 1.0, "max": 100.0,
+                                  "para": "peso máximo de un proveedor sobre el saldo pendiente"},
+    "carga_financiera": {"unidad": "%", "min": 1.0, "max": 500.0,
+                         "para": "gastos financieros máximos sobre el resultado de explotación"},
+    "rotacion_existencias": {"unidad": "días", "min": 1.0, "max": 3650.0, "entero": True,
+                             "para": "días máximos que pueden tardar las existencias en rotar"},
 }
 
 
@@ -447,6 +460,91 @@ def _r_variacion_existencias(c: dict) -> dict:
     return _res(OK, f"Existencias por {fmt(abs(existe))} y variación registrada por {fmt(abs(var))}.")
 
 
+
+
+def _r_existencias_negativas(c: dict) -> dict:
+    """Un almacén no puede estar en negativo."""
+    filas = [(cuenta, s.deudor) for cuenta, s in c["saldos"].items()
+             if cuenta.startswith(("30", "31", "32", "33", "34", "35")) and s.deudor < -0.01]
+    if not filas:
+        return _res(OK, "Ninguna cuenta de existencias tiene saldo deudor negativo.")
+    total = sum(v for _, v in filas)
+    datos = [[cuenta, round(v, 2)] for cuenta, v in sorted(filas, key=lambda x: x[1])]
+    return _res(ALERTA, f"{len(filas)} cuenta(s) de existencias en negativo ({fmt(abs(total))} en "
+                        "total): el inventario no cuadra.",
+                importe=round(abs(total), 2), datos=datos[:12],
+                recomendacion="Revisar las entradas y salidas de almacén del ejercicio.")
+
+
+def _r_amortizacion(c: dict) -> dict:
+    # El bruto, no el neto: los prefijos de `pyg` (`P_INMOV_*`) ya llevan dentro el 28x porque el
+    # balance necesita el inmovilizado neto; para comparar con la amortización acumulada se suman
+    # los grupos 20x y 21x tal cual y el 28x aparte.
+    inmov = suma_deudor(c["saldos"], ["20", "21"], recortar=False)
+    amort = suma_acreedor(c["saldos"], ["28"], recortar=False)
+    if inmov <= 0.01 and amort <= 0.01:
+        return _res(NO_EVALUABLE, "los apuntes no traen inmovilizado ni amortización acumulada.")
+    if amort > inmov + 0.01:
+        return _res(ALERTA, f"La amortización acumulada ({fmt(amort)}) supera al inmovilizado "
+                            f"({fmt(inmov)}): hay un error de signo o una baja sin registrar.",
+                    importe=round(amort - inmov, 2),
+                    recomendacion="Comprobar los asientos de dotación y las bajas de inmovilizado.")
+    return _res(OK, f"Amortización acumulada ({fmt(amort)}) por debajo del inmovilizado "
+                    f"({fmt(inmov)}).")
+
+
+def _r_resultado_sin_aplicar(c: dict) -> dict:
+    """El resultado del ejercicio anterior tiene que estar aplicado.
+
+    Se mira en el saldo de la 129. Ojo con lo que llega hasta aquí: el asiento de regularización
+    —que también toca la 129— **no está**, porque `servicio.cargar_ejercicios` aparta el
+    regularizador y el de cierre al cargar el ejercicio (si no, gastos e ingresos saldrían a cero).
+    Así que lo que queda en la 129 es la apertura y el asiento de aplicación del resultado: si sigue
+    con saldo acreedor, el beneficio está esperando reparto.
+    """
+    saldo = suma_acreedor(c["saldos"], ["129"], recortar=False)
+    if saldo > 0.01:
+        return _res(AVISO, f"La cuenta 129 sigue con {fmt(saldo)} sin aplicar: el resultado del "
+                           "ejercicio anterior está pendiente de reparto.",
+                    importe=round(saldo, 2),
+                    recomendacion="Aplicar el resultado (a reservas, a compensar pérdidas o a "
+                                  "dividendos) según el acuerdo de la junta.")
+    if saldo < -0.01:
+        return _res(NO_EVALUABLE, "La 129 está en el Debe: la aplicación del resultado está "
+                                  "contabilizada, pero los apuntes no traen la apertura con la que "
+                                  "cuadrarla.")
+    return _res(OK, "El resultado del ejercicio anterior está aplicado: la 129 no tiene saldo.")
+
+
+def _r_nominas_repetidas(c: dict) -> dict:
+    """Nóminas contabilizadas dos veces: mismo trabajador, mismo mes y mismo importe."""
+    vistos: dict[tuple[str, int, float], int] = defaultdict(int)
+    for l in c["lineas"]:
+        if l.cuenta.startswith("64") and l.debe > 0.01:
+            vistos[(l.tercero or l.descripcion[:30], mes_de(l.fecha), round(l.debe, 2))] += 1
+    repetidos = {k: v for k, v in vistos.items() if v > 1}
+    if not vistos:
+        return _res(NO_EVALUABLE, "los apuntes no traen gastos de personal (64x).")
+    if not repetidos:
+        return _res(OK, "Ninguna nómina aparece repetida (mismo trabajador, mes e importe).")
+    total = sum(k[2] * (v - 1) for k, v in repetidos.items())
+    datos = [[k[0], k[1], round(k[2], 2), v] for k, v in list(repetidos.items())[:12]]
+    return _res(AVISO if total < 2000 else ALERTA,
+                f"{len(repetidos)} nómina(s) repetidas: {fmt(total)} contabilizados de más.",
+                importe=round(total, 2), datos=datos,
+                recomendacion="Comprobar si el mismo gasto de personal se contabilizó dos veces.")
+
+
+def _r_anticipos(c: dict) -> dict:
+    anticipos = suma_acreedor(c["saldos"], ["438"], recortar=False)
+    if anticipos <= 0.01:
+        return _res(OK, "No hay anticipos de clientes pendientes de facturar (438).")
+    return _res(AVISO, f"Anticipos de clientes por {fmt(anticipos)} pendientes de facturar.",
+                importe=round(anticipos, 2),
+                recomendacion="Emitir la factura al entregar el bien o prestar el servicio: si el "
+                              "anticipo ya devengó IVA, comprobar que se repercutió.")
+
+
 # ------------------------------------------------------------------ reglas: fiscales
 
 def _r_socios_55(c: dict) -> dict:
@@ -568,6 +666,67 @@ def _r_modelo_202(c: dict) -> dict:
                               "imponible. Confirmar con el asesor.")
 
 
+
+
+def _r_iva_compensar(c: dict) -> dict:
+    u = c["u"]
+    saldo = suma_deudor(c["saldos"], ["4700", "472"], recortar=False)
+    if saldo <= 0.01:
+        return _res(OK, "No hay IVA pendiente de compensar (4700/472 con saldo a favor).")
+    if saldo < u["iva_a_compensar"]:
+        return _res(OK, f"IVA pendiente de compensar: {fmt(saldo)}, por debajo del límite fijado.")
+    return _res(AVISO, f"IVA pendiente de compensar de {fmt(saldo)}: conviene revisar que las "
+                       "autoliquidaciones estén presentadas y cuadradas.",
+                importe=round(saldo, 2),
+                recomendacion="Un saldo a favor que no baja puede ser IVA no deducido o "
+                              "autoliquidaciones sin contabilizar.")
+
+
+def _r_retenciones_trabajo(c: dict) -> dict:
+    personal = suma_deudor(c["saldos"], mod_pyg.P_PERSONAL, recortar=False)
+    mov_4751 = [l for l in c["lineas"] if l.cuenta.startswith("4751")]
+    if personal <= 0.01:
+        return _res(NO_EVALUABLE, "no hay gastos de personal en el ejercicio: no se puede comprobar "
+                                  "el 111 ni el 190.")
+    if not mov_4751:
+        return _res(AVISO, f"Hay {fmt(personal)} de gastos de personal y ningún movimiento en la "
+                           "cuenta 4751 (retenciones de trabajo).",
+                    importe=round(personal, 2),
+                    recomendacion="Comprobar que el 111 y el 190 están contabilizados: las retenciones "
+                                  "se ingresan cada trimestre.")
+    pendiente = abs(suma_acreedor(c["saldos"], ["4751"], recortar=False))
+    return _res(OK, f"Las retenciones de trabajo están contabilizadas (4751: {fmt(pendiente)} "
+                    "pendientes de ingreso).")
+
+
+def _r_is_contabilizado(c: dict) -> dict:
+    u = c["u"]
+    rai = float(c["pg"].get("rai") or 0.0)
+    impuesto = suma_deudor(c["saldos"], mod_pyg.P_IMPUESTO, recortar=False)
+    if rai <= 0.01:
+        return _res(NO_EVALUABLE, "el resultado antes de impuestos no es positivo: no hay cuota que "
+                                  "provisionar.")
+    if impuesto <= 0.01:
+        return _res(AVISO, f"Hay {fmt(rai)} de resultado antes de impuestos y ningún movimiento en la "
+                           "cuenta 630 (Impuesto de Sociedades).",
+                    importe=round(rai * u["tipo_impuesto_sociedades"], 2),
+                    recomendacion="Contabilizar la cuota y comprobar el modelo 202 y el 200.")
+    return _res(OK, f"Impuesto de Sociedades contabilizado ({fmt(impuesto)}) sobre {fmt(rai)} de "
+                    "resultado antes de impuestos.")
+
+
+def _r_iva_4t(c: dict) -> dict:
+    mov = [l for l in c["lineas"] if l.cuenta.startswith(("472", "477"))]
+    if not mov:
+        return _res(NO_EVALUABLE, "los apuntes no traen movimientos de IVA (472/477).")
+    meses = sorted({mes_de(l.fecha) for l in mov})
+    if any(m in (10, 11, 12) for m in meses):
+        return _res(OK, "Hay movimientos de IVA en el cuarto trimestre.")
+    return _res(AVISO, f"El IVA tiene movimientos en los meses {meses} y ninguno en el cuarto "
+                       "trimestre: puede faltar la liquidación del 4T.",
+                recomendacion="Comprobar el modelo 303 del cuarto trimestre.")
+
+
 # ------------------------------------------------------------------ reglas: financieras
 
 def _r_deudas_lp(c: dict) -> dict:
@@ -672,6 +831,133 @@ def _r_fondo_maniobra(c: dict) -> dict:
     return _res(OK, f"Fondo de maniobra positivo: {fmt(fm)}.")
 
 
+
+
+def _r_concentracion_proveedores(c: dict) -> dict:
+    u = c["u"]
+    filas = [t for t in por_tercero(c["lineas"], ["40", "41"]) if t["saldo"] < -0.01]
+    total = sum(-t["saldo"] for t in filas)
+    if total <= 0 or not filas:
+        return _res(NO_EVALUABLE, "no hay saldo pendiente de pago suficiente para medir la "
+                                  "concentración de proveedores.")
+    primero = min(filas, key=lambda t: t["saldo"])
+    saldo = -primero["saldo"]
+    pct = saldo / total * 100
+    if pct <= u["concentracion_proveedores"]:
+        return _res(OK, f"Ningún proveedor concentra más del "
+                        f"{fmt_pct(u['concentracion_proveedores'])} del saldo pendiente (el mayor, "
+                        f"{fmt_pct(pct)}).")
+    return _res(AVISO if pct < 50 else ALERTA,
+                f"{primero['tercero']} concentra el {fmt_pct(pct)} del saldo pendiente de pago "
+                f"({fmt(saldo)} de {fmt(total)}).",
+                importe=round(saldo, 2),
+                recomendacion="Con un solo proveedor tan dominante se depende de sus precios y de "
+                              "su capacidad de suministro.")
+
+
+def _r_antiguedad_proveedores(c: dict) -> dict:
+    u = c["u"]
+    filas = [f for f in c["resumen_cuentas"]
+             if str(f.get("cuenta", "")).startswith(("40", "41"))
+             and abs(f.get("saldo") or 0.0) > 0.01]
+    viejos = [f for f in filas if (f.get("antiguedad_dias") or 0) > u["antiguedad_clientes"]]
+    if not filas:
+        return _res(NO_EVALUABLE, "no hay cuentas de proveedores con saldo pendiente.")
+    total = sum(abs(f.get("saldo") or 0.0) for f in viejos)
+    if not viejos:
+        return _res(OK, f"Ninguna de las {len(filas)} cuenta(s) de proveedores con saldo supera los "
+                        f"{u['antiguedad_clientes']} días de antigüedad.")
+    orden = sorted(viejos, key=lambda f: -(abs(f.get("saldo") or 0.0)))
+    datos = [[f.get("cuenta", ""), round(f.get("saldo") or 0.0, 2), f.get("antiguedad_dias") or 0,
+              f.get("fecha_antigua_es", "")] for f in orden]
+    return _res(AVISO if total < 10000 else ALERTA,
+                f"{len(viejos)} cuenta(s) de proveedores con movimientos de más de "
+                f"{u['antiguedad_clientes']} días y saldo vivo: {fmt(total)}.",
+                importe=round(total, 2), datos=datos[:12],
+                recomendacion="Un saldo viejo suele ser una factura sin registrar o una "
+                              "reclamación del proveedor.")
+
+
+def _r_deterioro_clientes(c: dict) -> dict:
+    u = c["u"]
+    vencidos = [f for f in c["resumen_cuentas"]
+                if str(f.get("cuenta", "")).startswith(("43", "44"))
+                and (f.get("antiguedad_dias") or 0) > u["antiguedad_clientes"]
+                and abs(f.get("saldo") or 0.0) > 0.01]
+    # El deterioro (49x) es una corrección de valor: se acumula en el Haber, de ahí `acreedor`.
+    deterioro = suma_acreedor(c["saldos"], ["49"], recortar=False)
+    if not vencidos:
+        return _res(OK, "No hay saldos de clientes vencidos más allá del límite fijado.")
+    total = sum(abs(f.get("saldo") or 0.0) for f in vencidos)
+    if deterioro <= 0.01:
+        return _res(AVISO if total < 10000 else ALERTA,
+                    f"{fmt(total)} de saldos vencidos (más de {u['antiguedad_clientes']} días) y sin "
+                    "deterioro contabilizado.",
+                    importe=round(total, 2),
+                    recomendacion="Dotar el deterioro o justificar por qué se espera cobrar. "
+                                  "Hacienda exige el deterioro contabilizado para deducirlo.")
+    pct = deterioro / total * 100
+    return _res(OK, f"Deterioro contabilizado de {fmt(deterioro)} ({fmt_pct(pct)} de los saldos "
+                    f"vencidos, {fmt(total)}).")
+
+
+def _r_carga_financiera(c: dict) -> dict:
+    u = c["u"]
+    gastos = float(c["pg"].get("gastosFinancieros") or 0.0)
+    ebit = float(c["pg"].get("ebit") or 0.0)
+    if gastos <= 0.01:
+        return _res(OK, "No hay gastos financieros significativos en el ejercicio.")
+    if ebit <= 0:
+        return _res(ALERTA, f"El resultado de explotación es negativo ({fmt(ebit)}) y hay "
+                            f"{fmt(gastos)} de gastos financieros.",
+                    importe=round(gastos, 2),
+                    recomendacion="Sin margen de explotación, la carga financiera se come el "
+                                  "patrimonio: revisar la financiación.")
+    pct = gastos / ebit * 100
+    nivel = OK if pct <= u["carga_financiera"] else (AVISO if pct <= 100 else ALERTA)
+    return _res(nivel, f"Los gastos financieros ({fmt(gastos)}) son el {fmt_pct(pct)} del resultado "
+                       "de explotación.",
+                magnitud={"valor": round(pct, 1), "unidad": "%"},
+                recomendacion="Por encima del límite fijado, el beneficio depende de la deuda y de "
+                              "los tipos.")
+
+
+def _r_rotacion_existencias(c: dict) -> dict:
+    u = c["u"]
+    existencias = float(c["pg"].get("existencias") or 0.0)
+    compras = suma_deudor(c["saldos"], mod_pyg.P_APROVISIONAMIENTOS, recortar=False)
+    if existencias <= 0.01 or compras <= 0.01:
+        return _res(NO_EVALUABLE, "sin existencias o sin compras no se puede medir la rotación "
+                                  "del almacén.")
+    dias = round(existencias / compras * 365)
+    nivel = OK if dias <= u["rotacion_existencias"] else AVISO
+    return _res(nivel, f"Las existencias tardan {dias} días en rotar ({fmt(existencias)} de almacén "
+                       f"sobre {fmt(compras)} de consumo).",
+                magnitud={"valor": dias, "unidad": "días"},
+                recomendacion="Existencias paradas inmovilizan caja y se deterioran: revisar el "
+                              "almacén y las compras.")
+
+
+def _r_margen_neto(c: dict) -> dict:
+    pg = c["pg"]
+    resultado, ingresos = float(pg.get("resultadoNeto") or 0.0), float(pg.get("totalIngresos") or 0.0)
+    ant, ingresos_ant = float(pg.get("resultadoNetoAnt") or 0.0), float(pg.get("totalIngresosAnt") or 0.0)
+    if ingresos <= 0.01 or ingresos_ant <= 0.01:
+        return _res(NO_EVALUABLE, "hacen falta los ingresos de este ejercicio y del anterior para "
+                                  "comparar los márgenes.")
+    margen, margen_ant = resultado / ingresos * 100, ant / ingresos_ant * 100
+    caida = margen_ant - margen
+    if caida <= 2.0:
+        return _res(OK, f"El margen neto se mantiene: {fmt_pct(margen)} frente a {fmt_pct(margen_ant)} "
+                        f"de {c['year'] - 1}.")
+    return _res(AVISO if caida < 5 else ALERTA,
+                f"El margen neto cae {caida:.1f} puntos: {fmt_pct(margen_ant)} en {c['year'] - 1} y "
+                f"{fmt_pct(margen)} en {c['year']}.",
+                magnitud={"valor": round(caida, 1), "unidad": "puntos"},
+                recomendacion="Revisar precios y estructura de gastos: el margen es lo que sostiene "
+                              "la estructura.")
+
+
 # ------------------------------------------------------------------ reglas: mercantiles
 
 def _r_auditoria(c: dict) -> dict:
@@ -718,6 +1004,57 @@ def _r_capital_social(c: dict) -> dict:
                 f"Capital contabilizado: {fmt(contable)}. No hay dato de capital escriturado con "
                 "el que compararlo.",
                 recomendacion="Comparar con la escritura para detectar diferencias de capital.")
+
+
+
+
+def _r_capital_desembolsado(c: dict) -> dict:
+    # El capital nominal: `P_CAPITAL` incluye 103/104, que es justo lo pendiente, así que en el
+    # denominador inflaría el porcentaje.
+    capital = suma_acreedor(c["saldos"], ["100", "101"], recortar=False)
+    pendiente = suma_deudor(c["saldos"], ["103", "104"], recortar=False)
+    if capital <= 0.01:
+        return _res(NO_EVALUABLE, "los apuntes no traen la cuenta 100 (capital social).")
+    if pendiente <= 0.01:
+        return _res(OK, "El capital está desembolsado: no hay saldo pendiente en 103/104.")
+    pct = pendiente / capital * 100
+    return _res(AVISO, f"Capital pendiente de desembolsar: {fmt(pendiente)} ({fmt_pct(pct)} del "
+                       "capital social).",
+                importe=round(pendiente, 2), magnitud={"valor": round(pct, 1), "unidad": "%"},
+                recomendacion="Los desembolsos pendientes tienen plazo legal (art. 82 LSC) y "
+                              "responden frente a terceros.")
+
+
+def _r_sociedad_inactiva(c: dict) -> dict:
+    ventas = suma_acreedor(c["saldos"], mod_pyg.P_VENTAS, recortar=False)
+    gastos = suma_deudor(c["saldos"], mod_pyg.P_GASTOS_ACTIVIDAD, recortar=False)
+    if abs(ventas) > 0.01 or gastos > 0.01:
+        return _res(OK, f"La sociedad tiene actividad: {fmt(ventas)} de ventas y {fmt(gastos)} de "
+                        "gastos de explotación.")
+    return _res(AVISO, "No hay ventas ni gastos de explotación en el ejercicio: la sociedad está "
+                       "inactiva, y aun así sigue obligada a presentar cuentas y declaraciones.",
+                recomendacion="Confirmar con el cliente si mantiene la actividad; si no, valorar la "
+                              "disolución o la baja.")
+
+
+def _r_aplicacion_resultado(c: dict) -> dict:
+    previos = saldos_por_cuenta(c["anterior"]) if c["anterior"] else {}
+    perdidas = suma_deudor(c["saldos"], ["121"], recortar=False)
+    if perdidas <= 0.01:
+        return _res(OK, "No hay pérdidas acumuladas pendientes de compensar (121).")
+    if not previos:
+        return _res(NO_EVALUABLE, f"Hay {fmt(perdidas)} en la 121, pero no hay ejercicio anterior "
+                                  "con el que ver si las pérdidas crecen.",
+                    importe=round(perdidas, 2))
+    anteriores = suma_deudor(previos, ["121"], recortar=False)
+    if perdidas > anteriores + 0.01:
+        return _res(AVISO, f"Las pérdidas acumuladas crecen: {fmt(perdidas)} frente a "
+                           f"{fmt(anteriores)} de {c['year'] - 1}.",
+                    importe=round(perdidas - anteriores, 2),
+                    recomendacion="Valorar la aplicación del resultado: las pérdidas acumuladas "
+                                  "erosionan el patrimonio neto.")
+    return _res(OK, f"Pérdidas acumuladas sin crecer: {fmt(perdidas)} (en {c['year'] - 1}, "
+                    f"{fmt(anteriores)}).")
 
 
 # ------------------------------------------------------------------ reglas: laborales
@@ -832,7 +1169,69 @@ REGLAS: list[Regla] = [
     Regla("plantilla", "laboral", "Análisis laborales",
           "nóminas, contratos, SMI y brecha salarial",
           "requiere datos de plantilla y nóminas, que no están en el libro mayor", _r_plantilla),
-]
+
+ # --- segunda tanda (Fase 8, 27/09/2026): de 32 a 50 comprobaciones ---------------------------
+ Regla("existencias_negativas", "contable", "Existencias en negativo",
+ "que ninguna cuenta de existencias (30x-35x) tenga saldo deudor negativo",
+ "Σ(Debe−Haber) de cada cuenta de existencias, una a una", _r_existencias_negativas),
+ Regla("amortizacion_acumulada", "contable", "Amortización contra inmovilizado",
+ "que la amortización acumulada no supere al inmovilizado que amortiza",
+ "Σ(28x) frente a Σ(20x-22x) del ejercicio", _r_amortizacion),
+ Regla("resultado_sin_aplicar", "contable", "Resultado del ejercicio anterior aplicado",
+       "que el beneficio del ejercicio anterior no siga en la cuenta 129 sin repartir",
+       "saldo de la 129 en los apuntes operativos (el asiento de regularización no llega a los "
+       "módulos: lo aparta el servicio al cargar el ejercicio)", _r_resultado_sin_aplicar),
+ Regla("nominas_repetidas", "contable", "Nóminas repetidas",
+ "que no haya nóminas contabilizadas dos veces",
+ "agrupación de las líneas 64x por trabajador, mes e importe", _r_nominas_repetidas),
+ Regla("anticipos_clientes", "contable", "Anticipos de clientes",
+ "anticipos cobrados (438) pendientes de facturar",
+ "saldo acreedor de la cuenta 438", _r_anticipos),
+ Regla("iva_compensar", "fiscal", "IVA pendiente de compensar",
+ "que el IVA a favor no se acumule por encima del límite fijado (por defecto, 3.000 €)",
+ "Σ(4700, 472) con saldo deudor", _r_iva_compensar),
+ Regla("retenciones_trabajo", "fiscal", "Retenciones de trabajo (111 y 190)",
+ "que haya retenciones contabilizadas cuando hay gastos de personal",
+ "presencia de movimientos en la cuenta 4751", _r_retenciones_trabajo),
+ Regla("is_contabilizado", "fiscal", "Impuesto de Sociedades contabilizado",
+ "que el ejercicio con beneficio tenga contabilizada la cuota del Impuesto de Sociedades",
+ "presencia de movimientos en la cuenta 630 frente al resultado antes de impuestos",
+ _r_is_contabilizado),
+ Regla("iva_4t", "fiscal", "IVA del cuarto trimestre",
+ "que el cuarto trimestre tenga IVA contabilizado si el año tiene actividad",
+ "meses con movimientos en 472/477", _r_iva_4t),
+ Regla("concentracion_proveedores", "financiero", "Concentración de proveedores",
+ "que ningún proveedor pese más del límite fijado (por defecto, el 35%)",
+ "mayor saldo pendiente por tercero sobre el total de proveedores",
+ _r_concentracion_proveedores),
+ Regla("antiguedad_proveedores", "financiero", "Antigüedad de la deuda de proveedores",
+ "importes pendientes de pago con más días de antigüedad de los fijados (por defecto, 90)",
+ "antigüedad del saldo por cuenta de proveedores, según la conciliación",
+ _r_antiguedad_proveedores),
+ Regla("deterioro_clientes", "financiero", "Deterioro de clientes morosos",
+ "que los saldos vencidos tengan deterioro contabilizado",
+ "saldos de 43x/44x por encima del límite de antigüedad frente a las cuentas 49x",
+ _r_deterioro_clientes),
+ Regla("carga_financiera", "financiero", "Carga financiera sobre el resultado",
+ "que los gastos financieros no se coman el resultado de explotación "
+ "(por defecto, más del 50%)",
+ "gastos financieros del PyG sobre el EBIT", _r_carga_financiera),
+ Regla("rotacion_existencias", "financiero", "Rotación de existencias",
+ "que el almacén no tarde más días de los fijados en rotar (por defecto, 180)",
+ "existencias entre compras del ejercicio, por 365", _r_rotacion_existencias),
+ Regla("margen_neto", "financiero", "Margen neto frente al ejercicio anterior",
+ "que el margen neto no caiga más de 2 puntos respecto al ejercicio anterior",
+ "resultado neto sobre ingresos, comparado con el año anterior", _r_margen_neto),
+ Regla("capital_desembolsado", "mercantil", "Capital pendiente de desembolsar",
+ "que el capital social esté desembolsado",
+ "saldo deudor de las cuentas 103/104 frente a la 100", _r_capital_desembolsado),
+ Regla("sociedad_inactiva", "mercantil", "Sociedad sin actividad",
+ "que la sociedad tenga actividad en el ejercicio, o conste que no la tiene",
+ "ventas (70x) y gastos de explotación (6xx) del ejercicio", _r_sociedad_inactiva),
+ Regla("aplicacion_resultado", "mercantil", "Pérdidas acumuladas",
+ "que las pérdidas pendientes de compensar (121) no vayan a más",
+ "saldo de la 121 frente al del ejercicio anterior", _r_aplicacion_resultado),
+ ]
 
 
 # ------------------------------------------------------------------ cálculo

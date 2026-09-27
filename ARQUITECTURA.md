@@ -32,9 +32,16 @@ propios (ver §4).
 | # | Problema | Evidencia |
 |---|---|---|
 | 1 | Los trabajos en segundo plano siguen corriendo en **hilos del proceso**: su estado ya está en la base, pero el hilo no. Con varios procesos haría falta una cola de verdad; mientras, la plataforma se declara de un solo proceso y `arranque.py` se niega a arrancar con `WEB_CONCURRENCY > 1` | `trabajos.py`, `scripts/arranque.py::comprobar_procesos` |
-| 2 | Sin migraciones versionadas: `ESQUEMA` + `MIGRACIONES` + `migrar()` en `conectar()`. Ya provocó un cuelgue del login (`ALTER TABLE` pidiendo bloqueo sobre una tabla en uso) | `esquema.py` |
-| 3 | Frontend monolítico: `app.js` de 585 líneas, todo por `innerHTML`, sin módulos ni pruebas | `frontend/` |
-| 4 | Sin continuidad: no hay copia de seguridad del PostgreSQL de producción en el repositorio, ni entorno de previsualización, ni métricas | ninguna referencia a `pg_dump` |
+| 2 | Frontend monolítico: `app.js` de 585 líneas, todo por `innerHTML`, sin módulos ni pruebas (Fase 5, la única del plan sin empezar) | `frontend/` |
+
+### Cerrado en las Fases 3 y 4 (continuidad y observabilidad)
+
+Las dos filas que estaban aquí ya no son cierta deuda:
+
+| Lo que era | Cómo está ahora | Evidencia |
+|---|---|---|
+| Sin migraciones versionadas: `ESQUEMA` + `MIGRACIONES` + `migrar()` dentro de `conectar()`, que ya provocó un cuelgue del login (`ALTER TABLE` pidiendo bloqueo sobre una tabla en uso) | alembic con **tres migraciones** (`0001_esquema_inicial`, `0002_observabilidad`, `0003_umbrales_empresa`), aplicadas en el arranque y **probadas contra una copia real de producción** | `backend/migraciones/versions/`, `tests/test_migraciones.py` |
+| Sin continuidad ni métricas: ninguna referencia a `pg_dump`, ningún entorno donde probar, ningún dato de uso | Copia diaria del PostgreSQL de Coolify por API (cron `0 1 * * *`, retención 7 días / 14 días / 5 GB) con **restauración verificada**; entorno de previsualización sobre la misma base y en sólo-caché (`APICON_SOLO_CACHE=1`); y observabilidad: `X-Request-ID` en respuestas, registros y `ejecuciones`, `LOG_FORMATO=json`, `GET /api/interno/metricas` y la tabla `avisos` (`cobertura_parcial`, `error_calculo`, `error_erp`, `analisis_rojo`) agrupando repetidos, con `/api/salud` publicando los pendientes | `scripts/verificar_copia.py`, `app/observabilidad.py`, `app/alertas.py`, `migraciones/versions/0002_observabilidad.py` |
 
 ### Cerrado en la Fase 7 (tipos del dominio de informes, 27/09/2026)
 
@@ -204,17 +211,18 @@ comportamiento nuevo, no de una auditoría: la prueba del límite del PIN fue el
 
 ### Deuda declarada, a propósito
 
-- **Tipos (mypy)**: sólo los 13 módulos de informe siguen en la lista de excepciones (calculan
-  sobre `dict`/`object` tipados a medias, herencia de los nodos Code de n8n). Mypy **sí** cubre el
-  resto: capas nuevas incluidas (`api/`, `aplicacion/`, `errores.py`). La lista es un ratchet: un
-  módulo que salga de ella no vuelve a entrar.
+- **Tipos (mypy)**: **sin excepciones desde la Fase 7** —los 66 ficheros compilan, los 13 módulos de
+  informe incluidos—. Estuvieron exentos desde la Fase 1 porque venían de los nodos Code de n8n, que
+  calculan sobre `dict`; al quitar la excepción aparecieron 31 errores y, con ellos, un fallo visible
+  (Proyecciones servía el cuerpo dentro de una tupla). La lista era un ratchet: nada que salga de ella
+  vuelve a entrar, y hoy está vacía.
 - **Estilo (ruff)**: tres reglas silenciadas con motivo (`B008` por el patrón `Depends()` de
   FastAPI, `E501` por las plantillas HTML en cadenas y `E741` por la `l` heredada de «línea»), y
   `F841` en `backend/scripts/verificar_*.py` mientras se reescriben con `assert`.
 - **Ya no hay `xfail`**: el año no numérico está arreglado y probado, y los tres verificadores
   caducados están reparados. `xfail` queda como herramienta, no como registro de deuda.
 
-## 4.quater Fase 3 — en curso: continuidad (copias de seguridad)
+## 4.quater Fase 3 — entregada: continuidad (copias de seguridad)
 
 Lo que ya está hecho, y lo que falta.
 
@@ -438,8 +446,47 @@ pactamos, no con el general».
   clientes tienen criterios propios. Ese último listado incluye el valor general al lado: si media
   cartera tiene el mismo criterio cambiado, el que está mal es el general.
 
-**Pendiente de la Fase 6**: acercarse a los ~50 análisis (hay 32), dar destino a los avisos (correo o
-Teams, en `app/alertas.py`) y el frontal que pinte el semáforo y ajuste los criterios (Fase 5).
+**Fase 8 — el catálogo hacia los ~50 análisis (27/09/2026)**
+
+El catálogo pasa de **32 a 50 comprobaciones** (18 contables, 12 fiscales, 13 financieras, 6
+mercantiles y la laboral, que sigue en gris a propósito). Las 18 nuevas salen de lo que el **libro
+mayor puede responder de verdad**, que es la regla de la casa: ninguna inventa una cifra ni se disfraza
+de comprobación cuando el dato no está.
+
+- **Contables**: existencias en negativo, amortización acumulada contra el inmovilizado, resultado del
+  ejercicio anterior sin aplicar (129), nóminas contabilizadas dos veces, anticipos de clientes sin
+  facturar.
+- **Fiscales**: IVA pendiente de compensar por encima del límite, retenciones de trabajo (111/190) sin
+  contabilizar, Impuesto de Sociedades sin provisionar con beneficio, y el cuarto trimestre de IVA.
+- **Financieras**: concentración y antigüedad de **proveedores** (el espejo de las de clientes),
+  deterioro de clientes morosos, carga financiera sobre el resultado de explotación, rotación de
+  existencias y caída del margen neto.
+- **Mercantiles**: capital pendiente de desembolsar, sociedad sin actividad y pérdidas acumuladas que
+  crecen.
+
+Cuatro criterios nuevos (`iva_a_compensar`, `concentracion_proveedores`, `carga_financiera`,
+`rotacion_existencias`), declarados como los demás: **ajustables por cliente** y publicados en el
+informe. La suite fija ahora tres invariantes del catálogo, que es lo que impide que esto se
+desmadre al crecer: el número de comprobaciones por familia, que **todo criterio por defecto tenga su
+ficha de esquema** (un umbral que el cliente no puede ajustar y el informe no explica es un criterio
+invisible) y que ajustar un umbral cambie el veredicto de su regla.
+
+**Dos fallos que aparecieron al medir las reglas nuevas**, y que valen como lección:
+
+| Qué | Por qué pasó |
+|---|---|
+| La amortización acumulada se restaba dos veces: `P_INMOV_*` de `pyg` son prefijos del inmovilizado **neto** (llevan dentro el 28x, porque el balance necesita el neto), así que la comprobación veía un inmovilizado negativo | Se usan los grupos 20x/21x en bruto y el 28x aparte |
+| El deterioro de clientes (49x) se leía en el Debe, cuando es una **corrección de valor** que se acumula en el Haber: la regla decía «sin deterioro» incluso con la 490 llena | `suma_acreedor` para el 49x |
+
+Y una comprobación que **se reformuló por imposible**: la primera versión cuadraba la cuenta 129 con el
+resultado del PyG, pero el asiento de regularización —el único que toca la 129— **no llega a los
+módulos**: `servicio.cargar_ejercicios` lo aparta al cargar el ejercicio cerrado, junto al de cierre.
+La regla se cambió por lo que el libro mayor sí contiene (resultado del ejercicio anterior sin aplicar,
+que se ve en la apertura y en el asiento de aplicación) y la trampa quedó fijada en una prueba de
+extremo a extremo, para que nadie «arregle» el filtro sin verlo.
+
+**Pendiente**: dar destino a los avisos (correo o Teams, en `app/alertas.py`) y el frontal que pinte el
+semáforo y ajuste los criterios (Fase 5).
 
 ## 5. Plan por fases (el orden es por riesgo, no por vistosidad)
 
@@ -453,6 +500,7 @@ Teams, en `app/alertas.py`) y el frontal que pinte el semáforo y ajuste los cri
 | **5** | Frontend: partir `app.js` en módulos ES y probar las funciones puras (sin framework); valorar Vite+Vue/React **sólo** cuando lleguen los ~50 análisis con semáforo | El estado de la UI se complica de verdad ahí, no antes | 2 días |
 | **6** ✅ | Producto: el catálogo declarativo de análisis (32 reglas, ya existía) **más** su capa de producto: `GET /api/analisis` con filtros y **criterios ajustables por cliente**, `GET /api/interno/cartera` (semáforo de todos los clientes, sólo caché), aviso `analisis_rojo` y camino sin ERP (`ejecutar_solo_cache`) | Es el salto a «plataforma de asesoría» que pidió ABGA, y encaja sin tocar el borde | hecho (queda: acercarse a los ~50 análisis y pintar el semáforo en el frontal) |
 | **7** ✅ | Tipos del dominio de informes: los 14 ficheros de `app.modulos` compilan sin la excepción de mypy y hay una prueba que renderiza los 13 informes **sin** datos del cliente | Era el último punto de la tabla de arriba, y en esa excepción se escondía un fallo visible (Proyecciones servía el cuerpo dentro de una tupla) | hecho |
+| **8** ✅ | Catálogo hacia los ~50 análisis: de 32 a **50 comprobaciones** (18 contables, 12 fiscales, 13 financieras, 6 mercantiles, 1 laboral), con 4 criterios nuevos ajustables por cliente y una prueba por regla | Es la mitad del producto que ABGA pidió y lo que justifica el frontal: sin análisis no hay semáforo que pintar | hecho |
 
 **Lo que no se va a hacer** (y por qué): microservicios, colas o Kubernetes (un contenedor y un
 PostgreSQL son lo correcto para este tamaño y este equipo); ORM completo sobre el SQL actual (es

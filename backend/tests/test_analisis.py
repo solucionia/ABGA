@@ -62,6 +62,22 @@ def test_cada_regla_declara_que_comprueba_y_como(entorno: object) -> None:
         assert callable(r.evaluar)
 
 
+def test_un_ejercicio_cerrado_no_se_analiza_a_cero(entorno: object) -> None:
+    """La trampa del ejercicio cerrado, de extremo a extremo y por el camino del portal.
+
+    El ERP devuelve, además de los apuntes, el asiento de **regularización** (que anula gastos e
+    ingresos contra la 129) y el de **cierre** del balance. Si se suman como actividad, el panel de
+    un ejercicio cerrado sale entero a cero y sin explicar por qué: por eso el servicio los aparta al
+    cargar. No basta con que lo diga el comentario del código: aquí se pide el informe con un
+    ejercicio cerrado en la caché y se comprueba que las ventas siguen ahí.
+    """
+    en_cache(EMPRESA, 2025, sintetico.anio(2025, cerrado=True))
+    datos = analisis_de()
+    texto = " ".join(h["detalle"] for h in datos["hallazgos"])
+    assert "12.000,00 €" in texto, "un ejercicio cerrado no puede quedarse sin cifras de ventas"
+    assert datos["resumen"]["n_verde"] + datos["resumen"]["n_no_evaluable"] < datos["resumen"]["n_total"]
+
+
 def test_todas_las_reglas_salen_en_el_resultado(entorno: object) -> None:
     datos = analisis_de()
     assert len(datos["hallazgos"]) == len(mod.REGLAS)
