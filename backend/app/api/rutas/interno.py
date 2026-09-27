@@ -17,17 +17,21 @@ from ...aplicacion import usuarios as casos
 from ...errores import EntradaInvalida
 from ..dependencias import usuario_interno
 from ..esquemas import (
+    PeticionAviso,
     PeticionCache,
     PeticionEliminarUsuario,
     PeticionEmpresa,
     PeticionEmpresasDeUsuario,
     PeticionPin,
     PeticionUsuario,
+    RespuestaAvisoAtendido,
+    RespuestaAvisos,
     RespuestaCacheBorrada,
     RespuestaEliminado,
     RespuestaEmpresaCreada,
     RespuestaEmpresasBuscadas,
     RespuestaError,
+    RespuestaMetricas,
     RespuestaPin,
     RespuestaResumenInterno,
     RespuestaUsuario,
@@ -113,6 +117,33 @@ def eliminar_usuario(peticion: PeticionEliminarUsuario,
                      us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaEliminado:
     casos.eliminar(email=peticion.email, actor=us["email"])
     return RespuestaEliminado(eliminado=peticion.email.lower())
+
+
+@router.get("/metricas", response_model=RespuestaMetricas, responses=ERRORES,
+            summary="Uso y salud de la plataforma (Fase 4)")
+def metricas(dias: int = Query(7, ge=1, le=365),
+             us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaMetricas:
+    """Cuántos informes se han hecho, cuántos de caché, qué módulo falla y qué empresa.
+
+    Todo sale de la tabla `ejecuciones` que ya se escribía; lo que faltaba era mirarla de frente.
+    """
+    return RespuestaMetricas(**catalogo.metricas(dias=dias))
+
+
+@router.get("/avisos", response_model=RespuestaAvisos, responses=ERRORES,
+            summary="Avisos sin atender")
+def avisos(incluir_atendidos: bool = Query(False), limite: int = Query(200, ge=1, le=500),
+           us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaAvisos:
+    """Informes que salieron incompletos (`cobertura_parcial`) o que fallaron al calcular."""
+    return RespuestaAvisos(avisos=catalogo.avisos(incluir_atendidos=incluir_atendidos,
+                                                  limite=limite))
+
+
+@router.post("/avisos/atender", response_model=RespuestaAvisoAtendido, responses=ERRORES,
+             summary="Marcar un aviso como atendido")
+def atender_aviso(peticion: PeticionAviso,
+                  us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaAvisoAtendido:
+    return RespuestaAvisoAtendido(**catalogo.atender_aviso(peticion.id, us["email"]))
 
 
 @router.post("/cache", response_model=RespuestaCacheBorrada, responses=ERRORES,

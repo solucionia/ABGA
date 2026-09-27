@@ -26,8 +26,9 @@ from .api import manejadores
 from .api.rutas import ROUTERS
 from .config import RAIZ_PROYECTO, origenes_cors
 from .errores import NoEncontrado
+from .observabilidad import MiddlewarePeticion, configurar_logs
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+FORMATO_LOGS = configurar_logs()
 log = logging.getLogger("abga.api")
 
 FRONTEND = RAIZ_PROYECTO / "frontend"
@@ -68,6 +69,13 @@ def crear_app() -> FastAPI:
     if FRONTEND.exists():
         # Al final: los endpoints de arriba tienen prioridad sobre los ficheros estáticos.
         app.mount("/", StaticFiles(directory=str(FRONTEND), html=True), name="frontend")
+
+    # El identificador de petición se pone **lo más fuera posible** para que lo vean todas las capas
+    # de dentro (el cálculo del informe lo guarda en `ejecuciones` y en los avisos) y para que viaje
+    # de vuelta en la cabecera `X-Request-ID`. Se añade después de CORS a propósito: así queda por
+    # fuera y su cabecera no la puede pisar nadie.
+    app.add_middleware(MiddlewarePeticion)
+    log.info("registro en formato %s · identificador de petición activo", FORMATO_LOGS)
     return app
 
 

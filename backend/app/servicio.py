@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import apicon, cache, db, informes, modulos
+from . import alertas, apicon, cache, db, informes, modulos, observabilidad
 from .ledger import Linea, detectar_cierre, fmt, lineas_de_asientos
 from .modulos import Definicion
 
@@ -125,17 +125,32 @@ def cargar_ejercicios(cod_empresa: str, years: list[int], *, forzar: bool = Fals
     return por_anio, traza
 
 
+def _veredicto_cobertura(traza: dict[str, Any]) -> str:
+    """Veredicto en claro de lo que se pudo leer: `completa`, `parcial` o `''` (no se sabe).
+
+    Se guarda aparte del texto libre de `detalle` para poder contarlo: «cuántos informes salieron
+    incompletos este mes» tiene que ser una consulta, no una búsqueda de texto.
+    """
+    lecturas = [str((e or {}).get("cobertura") or "") for e in (traza.get("ejercicios") or {}).values()]
+    if not lecturas:
+        return ""
+    if any(c.startswith("parcial") for c in lecturas):
+        return "parcial"
+    return "completa" if all(lecturas) else ""
+
+
 def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[str, Any] | None = None,
              email: str | None = None, origen: str = "portal", forzar: bool = False,
              con_html: bool = True) -> Resultado:
     """Calcula un módulo de principio a fin, con los errores controlados."""
     inicio = time.perf_counter()
+    peticion = observabilidad.id_actual()   # ata las filas y los avisos con las líneas de registro
     definicion = modulos.obtener(nombre_modulo)
     if not definicion.disponible:
         msg = definicion.error or f"El módulo {nombre_modulo} no está disponible."
         db.registrar_ejecucion(cod_empresa=cod_empresa, ejercicio=year, modulos=nombre_modulo,
                                origen=origen, email=email, segundos=time.perf_counter() - inicio,
-                               estado="error", desde_cache=False, detalle=msg)
+                               estado="error", desde_cache=False, detalle=msg, id_peticion=peticion)
         return Resultado(status="error", error=msg, meta={"modulo": nombre_modulo},
                          tipo="no_disponible")
 
@@ -154,7 +169,9 @@ def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[st
         segundos = time.perf_counter() - inicio
         db.registrar_ejecucion(cod_empresa=cod_empresa, ejercicio=year, modulos=nombre_modulo,
                                origen=origen, email=email, segundos=segundos, estado="error_erp",
-                               desde_cache=False, detalle=str(e))
+                               desde_cache=False, detalle=str(e), id_peticion=peticion)
+        alertas.avisar("error_erp", cod_empresa=cod_empresa, ejercicio=year, modulo=nombre_modulo,
+                       detalle=str(e), origen=origen, email=email or "", id_peticion=peticion)
         log.warning("error del ERP en %s/%s: %s", cod_empresa, nombre_modulo, e)
         return Resultado(status="error", error=str(e), tipo="erp",
                          meta={"modulo": nombre_modulo, "segundos": round(segundos, 2)})
@@ -163,16 +180,29 @@ def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[st
         log.exception("fallo calculando %s/%s", cod_empresa, nombre_modulo)
         db.registrar_ejecucion(cod_empresa=cod_empresa, ejercicio=year, modulos=nombre_modulo,
                                origen=origen, email=email, segundos=segundos, estado="error_calculo",
-                               desde_cache=False, detalle=f"{type(e).__name__}: {e}")
+                               desde_cache=False, detalle=f"{type(e).__name__}: {e}",
+                               id_peticion=peticion)
+        alertas.avisar("error_calculo", cod_empresa=cod_empresa, ejercicio=year, modulo=nombre_modulo,
+                       detalle=f"{type(e).__name__}: {e}", origen=origen, email=email or "",
+                       id_peticion=peticion)
         return Resultado(status="error", error=f"No se pudo generar el informe: {e}", tipo="calculo",
                          meta={"modulo": nombre_modulo, "segundos": round(segundos, 2)})
 
     segundos = time.perf_counter() - inicio
+    cobertura = _veredicto_cobertura(traza)
     db.registrar_ejecucion(
         cod_empresa=cod_empresa, ejercicio=year, modulos=nombre_modulo, origen=origen, email=email,
         segundos=segundos, estado="ok", desde_cache=bool(traza["desde_cache"]),
         detalle=f"cobertura={traza['ejercicios']}", importes=metricas,
+        id_peticion=peticion, cobertura=cobertura,
     )
+    if cobertura == "parcial":
+        # El informe sale, pero con menos ejercicio del que existe: hay que enterarse sin mirar.
+        parciales = {y: e.get("cobertura") for y, e in (traza.get("ejercicios") or {}).items()
+                     if str((e or {}).get("cobertura") or "").startswith("parcial")}
+        alertas.avisar("cobertura_parcial", cod_empresa=cod_empresa, ejercicio=year,
+                       modulo=nombre_modulo, detalle=f"ejercicios incompletos: {parciales}",
+                       origen=origen, email=email or "", id_peticion=peticion)
     return Resultado(
         status="ok", html=html, data=datos, avisos=datos.get("avisos") or [],
         meta={

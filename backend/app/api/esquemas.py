@@ -239,6 +239,9 @@ class RespuestaSalud(RespuestaOk):
     proceso: dict[str, Any]
     modulos: list[dict[str, Any]]
     ejercicios: list[int]
+    # Avisos sin atender (Fase 4): es lo que permite que una monitorización avise de que hay informes
+    # saliendo incompletos o fallando. Va con valor por defecto para no romper a quien ya lo leía.
+    avisos: dict[str, Any] = Field(default_factory=dict)
 
 
 class RespuestaTrabajos(RespuestaOk):
@@ -286,3 +289,37 @@ class RespuestaEmpresaCreada(RespuestaOk):
 class RespuestaCacheBorrada(RespuestaOk):
     borrados: int
     cache: list[dict[str, Any]]
+
+
+# ---------------------------------------------------------------- observabilidad (Fase 4)
+
+class PeticionAviso(_Peticion):
+    """Atender un aviso: sólo hace falta cuál."""
+
+    id: int = Field(ge=1)
+
+
+class RespuestaMetricas(RespuestaOk):
+    """Uso y salud de la plataforma, desde la tabla `ejecuciones` que ya se escribía."""
+
+    dias: int
+    desde: str
+    total: int
+    por_estado: dict[str, int]
+    errores: int
+    informes_parciales: int
+    desde_cache: dict[str, Any]
+    segundos: dict[str, Any]
+    por_modulo: list[dict[str, Any]]
+    por_empresa: list[dict[str, Any]]
+    avisos_pendientes: int
+    avisos: list[dict[str, Any]]
+
+
+class RespuestaAvisos(RespuestaOk):
+    avisos: list[dict[str, Any]]
+
+
+class RespuestaAvisoAtendido(RespuestaOk):
+    id: int
+    atendido_por: str

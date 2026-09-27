@@ -55,9 +55,16 @@ def recorrido(motor: str) -> None:
         "SELECT name AS table_name FROM sqlite_master WHERE type='table'"
     ).fetchall()
     nombres = sorted(f["table_name"] for f in tablas if not str(f["table_name"]).startswith("sqlite_"))
-    esperadas = sorted(["apuntes", "calc_cache", "ejecuciones", "empresas", "intentos", "permisos",
-                        "tokens", "trabajos", "usuarios"])
-    comprobar("tablas creadas", nombres, esperadas)
+    esperadas = sorted(["apuntes", "avisos", "calc_cache", "ejecuciones", "empresas", "intentos",
+                        "permisos", "tokens", "trabajos", "usuarios"])
+    # Se comprueba que están TODAS las de la plataforma, no que no haya ninguna más: alembic lleva su
+    # propia tabla de control (`alembic_version`) y cada función nueva añade la suya (`avisos`, de
+    # observabilidad). Antes se comparaba la lista entera y añadir una tabla rompía la comprobación.
+    faltan = [t for t in esperadas if t not in nombres]
+    sobran = [t for t in nombres if t not in esperadas]
+    comprobar("tablas de la plataforma creadas", faltan, [])
+    if sobran:
+        print(f"    (además, normales: {sobran})")
 
     # --- empresas y usuarios ---
     db.crear_empresa("6091", "MB Dommo, S.L.", 2023, "piloto")

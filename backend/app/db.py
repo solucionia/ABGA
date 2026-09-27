@@ -236,17 +236,92 @@ def tiene_pin(cod_empresa: str) -> bool:
 
 def registrar_ejecucion(*, cod_empresa: str, ejercicio: int | None, modulos: str, origen: str,
                         email: str | None, segundos: float, estado: str, desde_cache: bool,
-                        detalle: str = "", importes: dict[str, Any] | None = None) -> int:
+                        detalle: str = "", importes: dict[str, Any] | None = None,
+                        id_peticion: str = "", cobertura: str = "") -> int:
     """El log que en el sistema antiguo existía en los 7 workflows pero estaba desconectado
-    y nunca escribía nada."""
+    y nunca escribía nada.
+
+    `id_peticion` ata la fila con las líneas de registro de esa misma petición, y `cobertura` guarda
+    el veredicto en claro (`completa`, `parcial`…) para poder contar los informes incompletos sin
+    tener que interpretar el texto de `detalle`, que es informativo.
+    """
     return bd.insertar_devolviendo_id(
         "ejecuciones",
         ("instante", "cod_empresa", "ejercicio", "modulos", "origen", "email",
-         "segundos", "estado", "desde_cache", "detalle", "importes"),
+         "segundos", "estado", "desde_cache", "detalle", "importes", "id_peticion", "cobertura"),
         (cache.ahora(), str(cod_empresa), ejercicio, modulos, origen, email or "",
          round(segundos, 2), estado, 1 if desde_cache else 0, detalle[:2000],
-         cache.json.dumps(importes or {}, ensure_ascii=False)),
+         cache.json.dumps(importes or {}, ensure_ascii=False), str(id_peticion or "")[:64],
+         str(cobertura or "")[:40]),
     )
+
+
+def metricas_ejecuciones(dias: int = 7, *, empresas: int = 10) -> dict[str, Any]:
+    """La plataforma de un vistazo, calculado desde `ejecuciones` (no hay otra fuente que inventar).
+
+    Se resuelve con **dos** consultas agrupadas —portables tal cual a SQLite y a PostgreSQL— y el
+    resto se compone en Python, en vez de con SQL distinto para cada motor. La media por módulo se
+    pondera por el número de ejecuciones: sumar las medias de cada estado daría un número falso
+    cuando un módulo tiene 40 ejecuciones buenas y 2 malas.
+    """
+    desde = (datetime.now(UTC) - timedelta(days=int(dias))).isoformat(timespec="seconds")
+    con = cache.conectar()
+    filas = con.execute(
+        "SELECT modulos, estado, COUNT(*) AS n, AVG(segundos) AS media_segundos,"
+        " MAX(segundos) AS peor_segundos, MAX(instante) AS ultima, SUM(desde_cache) AS en_cache,"
+        " SUM(CASE WHEN cobertura='parcial' THEN 1 ELSE 0 END) AS parciales"
+        " FROM ejecuciones WHERE instante >= ? GROUP BY modulos, estado", (desde,)).fetchall()
+    por_empresa = con.execute(
+        "SELECT cod_empresa, COUNT(*) AS n,"
+        " SUM(CASE WHEN estado='ok' THEN 0 ELSE 1 END) AS errores, MAX(instante) AS ultima"
+        " FROM ejecuciones WHERE instante >= ? GROUP BY cod_empresa ORDER BY n DESC LIMIT ?",
+        (desde, int(empresas))).fetchall()
+
+    modulos: dict[str, dict[str, Any]] = {}
+    estados: dict[str, int] = {}
+    total = 0
+    en_cache = 0
+    parciales = 0
+    suma_segundos = 0.0
+    peor = 0.0
+    for f in filas:
+        n = int(f["n"] or 0)
+        total += n
+        estados[str(f["estado"])] = estados.get(str(f["estado"]), 0) + n
+        en_cache += int(f["en_cache"] or 0)
+        parciales += int(f["parciales"] or 0)
+        suma_segundos += float(f["media_segundos"] or 0.0) * n
+        peor = max(peor, float(f["peor_segundos"] or 0.0))
+        m = modulos.setdefault(str(f["modulos"]), {"modulo": str(f["modulos"]), "n": 0, "errores": 0,
+                                                   "en_cache": 0, "parciales": 0, "segundos_media": 0.0,
+                                                   "peor_segundos": 0.0, "ultima": ""})
+        m["n"] += n
+        m["en_cache"] += int(f["en_cache"] or 0)
+        m["parciales"] += int(f["parciales"] or 0)
+        if str(f["estado"]) != "ok":
+            m["errores"] += n
+        m["segundos_media"] += float(f["media_segundos"] or 0.0) * n
+        m["peor_segundos"] = max(m["peor_segundos"], float(f["peor_segundos"] or 0.0))
+        m["ultima"] = max(m["ultima"], str(f["ultima"] or ""))
+    for m in modulos.values():
+        m["segundos_media"] = round(m["segundos_media"] / m["n"], 2) if m["n"] else 0.0
+        m["peor_segundos"] = round(m["peor_segundos"], 2)
+
+    return {
+        "dias": int(dias),
+        "desde": desde,
+        "total": total,
+        "por_estado": estados,
+        "errores": total - int(estados.get("ok", 0)),
+        "informes_parciales": parciales,
+        "desde_cache": {"n": en_cache,
+                        "porcentaje": round(100.0 * en_cache / total, 1) if total else 0.0},
+        "segundos": {"media": round(suma_segundos / total, 2) if total else 0.0,
+                     "peor": round(peor, 2)},
+        # Los módulos que más se usan primero: es el orden en el que se mira esto.
+        "por_modulo": sorted(modulos.values(), key=lambda m: (-m["n"], m["modulo"])),
+        "por_empresa": [dict(f) for f in por_empresa],
+    }
 
 
 def ejecuciones(*, cod_empresa: str | None = None, limite: int = 100) -> list[dict[str, Any]]:

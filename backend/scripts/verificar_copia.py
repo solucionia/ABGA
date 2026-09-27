@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
@@ -61,27 +60,18 @@ def binario(nombre: str) -> str:
 
 
 def tablas_del_esquema() -> list[str]:
-    """Las tablas que define la plataforma, leídas de `esquema.py` (una sola fuente de verdad)."""
-    return sorted(set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", esquema.ESQUEMA)))
+    """Las tablas que la plataforma espera, según `esquema.TABLAS` (el contrato del esquema).
+
+    Ese contrato no es una lista suelta: `tests/test_migraciones.py` comprueba que las migraciones
+    crean exactamente esas tablas, así que lo que se espera y lo que se crea no pueden separarse.
+    """
+    return list(esquema.TABLAS)
 
 
 def objetos_del_volcado(pg_restore: str, copia: pathlib.Path) -> str:
     """`pg_restore --list`: lo mínimo para saber que el fichero es un volcado legible."""
     r = subprocess.run([pg_restore, "--list", str(copia)], capture_output=True, text=True)
     return r.stdout if r.returncode == 0 else ""
-
-
-def _con_otra_base(uri: str, base: str) -> str:
-    """La misma conexión apuntando a otra base.
-
-    No vale con cortar por el último `/`: la URI de `pgserver` lleva el socket en la parte de
-    consulta (`…?host=/tmp/xxx`) y un `re.sub` se lleva por delante el directorio del socket. Se
-    reconstruye respetando host y parámetros.
-    """
-    from urllib.parse import urlsplit, urlunsplit
-
-    partes = urlsplit(uri)
-    return urlunsplit((partes.scheme, partes.netloc, f"/{base}", partes.query, partes.fragment))
 
 
 def recuentos(uri: str) -> dict[str, int]:
@@ -131,7 +121,7 @@ def main() -> int:
     destino = "abga_restaurada"
     subprocess.run([psql, uri_base, "-c", f'CREATE DATABASE "{destino}"'], check=True,
                    capture_output=True, text=True)
-    uri_destino = _con_otra_base(uri_base, destino)
+    uri_destino = bd.con_otra_base(uri_base, destino)
 
     r = subprocess.run([pg_restore, "--dbname", uri_destino, "--no-owner", "--no-privileges",
                         str(copia)], capture_output=True, text=True)

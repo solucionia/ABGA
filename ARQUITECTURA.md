@@ -225,14 +225,128 @@ base con el esquema de la plataforma → `pg_dump` → la comprobación pasa y l
 **truncado** falla; un fichero **inexistente** falla con su mensaje. Los casos malos están ahí a
 propósito: sin ellos, la comprobación no probaría nada.
 
-**Lo que falta y necesita decisión**:
+**Hecho y medido (27/09/2026)** — la copia está programada en `abga-postgres` y **probada de verdad**:
+
+| Qué | Valor medido |
+|---|---|
+| Horario | uuid `gy0s9juxencq0pxymbkwxu9p`, cron `0 1 * * *`, `enabled: true` |
+| Cuándo | 01:00 **UTC** = **03:00 en Madrid** en verano (02:00 en invierno). La API de Coolify no acepta zona horaria: el cron es del servidor, y el servidor (`apps-varias`) está en `Etc/UTC` — comprobado con `date` y `/etc/timezone` |
+| Qué copia | `dump_all: false`, base `postgres` (así se llama de verdad la base: lo confirma el `DATABASE_URL` de la app, `…:5432/postgres`), formato custom de `pg_dump` |
+| Retención | 7 copias · 14 días · 5 GB (en el servidor; `save_s3: false`) |
+| Primera copia | 27/09 18:20:34 UTC, estado `success`, **3.601.871 bytes** (3,4 MB) |
+| Dónde queda | `/data/coolify/backups/databases/root-team-0/abga-postgres-x1i5tm1kifhvo2mypcgbza6d/pg-dump-postgres-<epoch>.dmp` |
+
+**La prueba de restauración, con esa copia de producción** (no con una de laboratorio):
+
+```
+ok  pg_restore puede leer el fichero           ok  tabla empresas — 391 filas
+ok  el volcado trae tablas — 9 con datos       ok  tabla usuarios — 2 · permisos — 1 · ejecuciones — 75
+ok  pg_restore termina bien                    ok  listar_empresas() → 391 empresas
+ok  el usuario interno está                    ok  info_cache responde
+RESULTADO: la copia se restaura y los datos se leen con la plataforma. Copia válida.
+```
+
+Para repetirla cuando haga falta (la copia se trae de la VM y se prueba en un PostgreSQL desechable;
+el fichero que baja lleva datos de clientes, así que se borra al terminar):
+
+```bash
+gcloud compute ssh apps-varias --zone=europe-west1-b --quiet \
+  --command="sudo cat /data/coolify/backups/databases/root-team-0/abga-postgres-<uuid>/pg-dump-postgres-<epoch>.dmp" \
+  > /tmp/copia.dmp
+./.venv/bin/python backend/scripts/verificar_copia.py --copia /tmp/copia.dmp
+```
+
+**Migraciones versionadas (alembic) — hecho y medido (27/09/2026)**
+
+Hasta ahora el esquema se aplicaba de dos formas a la vez: `CREATE TABLE IF NOT EXISTS` en cada
+conexión y una lista de `ALTER TABLE` a mano (`MIGRACIONES`) que se lanzaba al conectar. Ahora hay
+una sola vía, `backend/migraciones/`:
+
+- `bd.conectar()` aplica lo que falte **una vez por proceso y base**, así que para quien usa la
+  plataforma (o los scripts) nada cambia; lo que cambia es que cada cambio de esquema queda
+  versionado en la tabla `alembic_version` y se puede saber en qué punto está una base.
+- La migración `0001_esquema_inicial` reproduce el esquema que ya estaba, con `IF NOT EXISTS` y
+  comprobación de columnas: **aplicarla a la base de producción no toca los datos**, sólo la marca.
+- El DDL vive sólo en la migración; `app/esquema.py` queda como **contrato** (`TABLAS`,
+  `IMPRESCINDIBLES`) y una prueba comprueba que lo que crean las migraciones coincide exactamente
+  con ese contrato (si alguien añade una tabla en un sitio y no en el otro, se pone rojo).
+- **La prueba del despliegue, con la copia real de producción**: se restauró el volcado de
+  `abga-postgres` (391 empresas, 2 usuarios, 1 permiso, 75 ejecuciones) en un PostgreSQL temporal, se
+  aplicaron las migraciones y los recuentos quedaron **idénticos**; `pin_hash` presente y la base
+  marcada en `0001`. Se hace con SQL puro para contar, porque llamar al código de la aplicación
+  migraría la base antes de medir.
+- A mano: `./.venv/bin/python backend/scripts/migrar.py` (`--estado`, `--historial`) o `make migrar`.
+- Al desplegar: la imagen necesita `alembic` y `sqlalchemy` (`requirements.txt` ya los trae) y el
+  arranque pone la base al día; si algo fallara, el arranque falla antes de servir.
+
+**Entorno de previsualización — hecho y medido (27/09/2026)**
+
+Hasta hoy había un solo despliegue y llevaba `APICON_SOLO_CACHE=1`: servía de la caché y no tocaba el
+ERP. Eso vale para enseñar, pero no es lo que debe tener delante quien usa la plataforma de verdad (un
+informe que no esté en la caché no se puede generar). Ahora hay **dos aplicaciones** en el mismo
+proyecto de Coolify:
+
+| Aplicación | Puerto del host | URL | `APICON_SOLO_CACHE` | Para qué |
+|---|---|---|---|---|
+| `abga-plataforma` (`enponjop7qgrlq0ou0bqudtw`) | 3099 → 8000 | https://abga.34.76.127.144.sslip.io | vacía (lee el ERP) | El portal que se le enseña al cliente |
+| `abga-preview` (`g1zpqdfx3ic6aj2rfludxgym`) | 3097 → 8000 | https://abga-preview.34.76.127.144.sslip.io | `1` (sólo caché) | Enseñar cambios sin gastar el ERP |
+
+- Las dos comparten la misma base y la misma caché: la previsualización enseña **los mismos datos**
+  que producción, sin pedirle nada al ERP.
+- `SECRET_KEY` **distinta** en cada una: una sesión de la previsualización no vale en producción.
+- `DEMO_AUTO_LOGIN` y `CORS_ORIGENES` vacías en las dos, y comprobado que sin sesión las dos responden
+  **401** (`/api/yo`): eso es lo que evita que una URL expuesta se convierta en un portal abierto.
+- En la máquina sólo las separa el puerto del host (3099 y 3097); del nombre y del certificado se
+  encarga un `virtualhost` de nginx por dominio, como el resto de los servicios del servidor.
+- Consecuencia de dejar producción leyendo el ERP: si el TTL de 12 h ha caducado, **el primer informe
+  de esa empresa y ejercicio tarda lo que tarde la descarga** (se midió más de 120 s para un ejercicio
+  completo). Los que ya están en la caché siguen siendo instantáneos.
+- Al compartir base, los intentos de acceso de la previsualización entran en el mismo contador que los
+  de producción (10 fallos / 15 min por cuenta). Si algún día molesta, se le da su propia base: la
+  migración `0001` ya permite crear el esquema desde cero.
+
+**Lo que sigue pendiente de la Fase 3**:
 
 | Pendiente | Qué falta |
 |---|---|
-| Programar la copia en `abga-postgres` | Crear el horario (propuesta: diaria a las 03:00, retención 7 copias) y lanzar un «Backup Now». Se puede hacer por la API de Coolify (requiere aprobar el comando) o en su UI |
-| Copia fuera del servidor | Si el servidor se pierde, se pierde también `/data/coolify/backups`. Para cubrirlo hace falta un destino S3-compatible (bucket + credenciales) |
-| Migraciones versionadas | Sigue pendiente alembic: hoy el esquema se aplica con `CREATE TABLE IF NOT EXISTS` + `MIGRACIONES` en `conectar()` |
-| Entorno de previsualización | Un segundo despliegue con `APICON_SOLO_CACHE=1` para enseñar cambios sin tocar el ERP |
+| Copia fuera del servidor | Si se pierde la máquina se pierde también `/data/coolify/backups`. Para cubrirlo hace falta un destino S3-compatible (bucket + credenciales) y `save_s3: true` |
+| Aviso de copia perdida | `missing_backup_notification_days` está a 0: si la copia falla, nadie se enteraría |
+
+**Observabilidad — hecho y medido (27/09/2026)**
+
+La plataforma ya escribía `ejecuciones` (con empresa, módulo, estado, segundos y si salió de caché),
+pero mirarla era cosa de quien se acordaba, y las líneas de registro no distinguían una petición de
+otra. Ahora:
+
+- **Un identificador por petición** (`X-Request-ID`): si el cliente lo manda, se respeta (saneado: sin
+  saltos de línea ni caracteres raros); si no, se genera. Viaja en la cabecera de la respuesta, en
+  **todas** las líneas de registro de esa petición y en la fila de `ejecuciones` que genera. Con dos
+  personas usando el portal, «el informe falló» y «la ejecución que falló» dejan de ser dos cosas que
+  hay que emparejar por la hora.
+- **Una línea por petición** con método, ruta, estado y milisegundos. Se deja de duplicar con el
+  registro de accesos de uvicorn (que se silencia): dos líneas por petición no ayudan a nadie. Los
+  latidos de `/api/salud` van a nivel `DEBUG`, para que no tapen lo que importa.
+- **`LOG_FORMATO=json`**: una línea JSON por registro (`instante`, `nivel`, `registro`,
+  `id_peticion`, `mensaje`, y el rastro si hay excepción) para que lo lea un programa. Por defecto,
+  texto legible con el identificador entre corchetes.
+- **`ejecuciones.cobertura`**: el veredicto en claro (`completa`, `parcial`) al lado del texto libre de
+  `detalle`. Antes «¿cuántos informes salieron incompletos?» exigía interpretar un texto; ahora es una
+  consulta.
+- **Métricas** (`GET /api/interno/metricas?dias=7`, sólo rol interno): total, por estado, errores,
+  informes incompletos, cuántos salieron de caché, tiempo medio y peor, por módulo y por empresa. Se
+  calcula con dos consultas agrupadas portables a los dos motores y se compone en Python; la media por
+  módulo va **ponderada** por número de ejecuciones (sumar medias de estados distintos daría un número
+  falso). Ojo al leerlas: el inicio de sesión **también** se registra como ejecución (módulo `login`).
+- **Avisos** (tabla `avisos`, `GET /api/interno/avisos`, `POST /api/interno/avisos/atender`): se apunta
+  un aviso cuando un informe sale con `cobertura=parcial` o falla (`error_calculo`, `error_erp`). Los
+  repetidos del mismo tipo/empresa/ejercicio/módulo **se agrupan** (contador `veces`, no 200 filas) y
+  se cierran a mano, dejando constancia de quién. `/api/salud` publica **cuántos hay sin atender**: es
+  el número que puede vigilar una monitorización sin ver datos de nadie.
+- Lo que **no** se ha hecho, a propósito: correo o webhook. No hay destino configurado, y un aviso que
+  no llega a nadie es peor que uno que está a la vista. Cuando haya destino se añade en un sitio
+  (`app/alertas.py`) sin tocar el panel.
+
+
 
 ## 5. Plan por fases (el orden es por riesgo, no por vistosidad)
 
@@ -241,8 +355,8 @@ propósito: sin ellos, la comprobación no probaría nada.
 | **0** ✅ | pytest + pyproject + ruff/mypy + CI + datos sintéticos | Sin red de seguridad, nada de lo demás se puede verificar | hecho |
 | **1** ✅ | Contrato (Pydantic), formato único de error, capas `api → aplicacion → dominio`, CORS cerrado, ruta muerta y verificadores reparados | Era la deuda que más frenaba todo lo demás; hecho sin romper el portal | hecho |
 | **2** ✅ | Estado fuera del proceso: intentos y trabajos a la base de datos, `SECRET_KEY` obligatoria y el número de procesos declarado y comprobado | Es lo que decide si la plataforma puede escalar a más de un proceso | hecho |
-| **3** | Datos y continuidad: migraciones con alembic, copia de seguridad del PostgreSQL de Coolify **con restauración probada**, entorno de previsualización con `APICON_SOLO_CACHE=1` | Un fallo de datos del cliente no se arregla con código | 2-3 días |
-| **4** | Observabilidad: logs estructurados con id de petición (el `codigo` del error ya es estable), métricas sobre la tabla `ejecuciones` que ya existe, alerta cuando un informe salga con `cobertura=parcial` o `error_calculo` | Hace visibles los fallos que hoy sólo se ven si alguien mira | 1 día |
+| **3** ✅ | Datos y continuidad: migraciones con alembic ✅, copia de seguridad del PostgreSQL de Coolify **con restauración probada** ✅, entorno de previsualización con `APICON_SOLO_CACHE=1` ✅ (y producción leyendo el ERP) | Un fallo de datos del cliente no se arregla con código | hecho |
+| **4** ✅ | Observabilidad: identificador de petición (`X-Request-ID`) en las respuestas, en las líneas de registro y en `ejecuciones`; `LOG_FORMATO=json`; `GET /api/interno/metricas`; tabla `avisos` con `cobertura_parcial`/`error_calculo`/`error_erp`, agrupando repetidos y con `/api/salud` publicando los pendientes | Hace visibles los fallos que hoy sólo se ven si alguien mira | hecho |
 | **5** | Frontend: partir `app.js` en módulos ES y probar las funciones puras (sin framework); valorar Vite+Vue/React **sólo** cuando lleguen los ~50 análisis con semáforo | El estado de la UI se complica de verdad ahí, no antes | 2 días |
 | **6** | Producto: catálogo de análisis declarativo (tabla de reglas → resultado con semáforo) sobre el registro de módulos actual | Es el salto a «plataforma de asesoría» que pidió ABGA, y encaja sin tocar el borde | según alcance |
 

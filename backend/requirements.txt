@@ -4,6 +4,9 @@ uvicorn[standard]>=0.30,<1
 httpx>=0.28,<1
 # PostgreSQL (producción: el Postgres de Coolify). Con DATABASE_URL vacío se usa SQLite.
 psycopg[binary]>=3.2,<4
+# Migraciones versionadas del esquema (`backend/migraciones/`, ver ARQUITECTURA.md).
+alembic>=1.14,<2
+sqlalchemy>=2,<3
 # Sólo para pruebas: levanta un PostgreSQL embebido para verificar la capa de datos en local.
 # En producción no hace falta (ver backend/scripts/verificar_bd.py).
 # pgserver>=0.1

@@ -116,13 +116,21 @@ class Conexion:
 
 
 def conectar() -> Conexion:
-    """Conexión por hilo, con el esquema garantizado."""
-    from . import esquema  # import diferido: evita ciclo con cache
-
+    """Conexión por hilo, con el esquema al día."""
     clave = _clave_conexion()
     con = getattr(_local, "con", None)
     if con is not None and getattr(_local, "clave", None) == clave:
         return con
+
+    # Las migraciones se aplican UNA vez por proceso y base, y **antes** de abrir la conexión de la
+    # aplicación: el DDL necesita bloqueo exclusivo y, con otra transacción abierta, dejaba el login
+    # colgado (pasó probando en modo producción). Desde la Fase 3 el esquema lo lleva alembic:
+    # `app/migraciones.py` y `backend/migraciones/versions/`.
+    if clave not in _esquema_asegurado:
+        from . import migraciones  # import diferido: migraciones importa bd
+
+        migraciones.aplicar()
+        _esquema_asegurado.add(clave)
 
     if es_postgres():
         import psycopg
@@ -137,16 +145,21 @@ def conectar() -> Conexion:
         crudo.execute("PRAGMA synchronous=NORMAL")
         con = Conexion(crudo, postgres=False)
 
-    # El esquema y las migraciones se aseguran UNA vez por proceso y base. Hacerlo en cada conexión
-    # no sólo es más lento: `ALTER TABLE` necesita bloqueo exclusivo y, con otra transacción abierta,
-    # dejaba la aplicación colgada (visto probando en modo producción).
-    if clave not in _esquema_asegurado:
-        con.executescript(esquema.ESQUEMA)
-        con.commit()
-        esquema.migrar(con)
-        _esquema_asegurado.add(clave)
     _local.con, _local.clave = con, clave
     return con
+
+
+def con_otra_base(uri: str, base: str) -> str:
+    """La misma conexión apuntando a otra base.
+
+    No vale cortar por el último `/`: las URIs del PostgreSQL embebido llevan el socket en la parte
+    de consulta (`…?host=/run/user/…/python_PostgresServer/…`) y el corte se lleva por delante el
+    directorio del socket (`connection to server on socket … failed`).
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    partes = urlsplit(uri)
+    return urlunsplit((partes.scheme, partes.netloc, f"/{base}", partes.query, partes.fragment))
 
 
 def _ruta_sqlite() -> str:

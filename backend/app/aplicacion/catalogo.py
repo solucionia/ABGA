@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import VERSION, auth, cache, db, modulos, trabajos
+from .. import VERSION, alertas, auth, cache, db, modulos, trabajos
 from ..config import cargar_config
 from ..errores import NoEncontrado
 
@@ -99,7 +99,12 @@ def trabajo(tid: str) -> dict[str, Any]:
 
 
 def salud() -> dict[str, Any]:
-    """Diagnóstico público: versión, ERP configurado, caché y módulos disponibles."""
+    """Diagnóstico público: versión, ERP configurado, caché y módulos disponibles.
+
+    Incluye **cuántos avisos hay sin atender**, que es el dato que hace que una monitorización sirva
+    de algo: si eso sube, hay informes saliendo incompletos o fallando. El número es inocuo (no dice
+    de qué empresa ni de qué módulo): el detalle se ve en el panel interno, con sesión.
+    """
     cfg = cargar_config()
     return {
         "status": "ok",
@@ -112,4 +117,29 @@ def salud() -> dict[str, Any]:
         "modulos": [{"nombre": d.nombre, "disponible": d.disponible, "error": d.error}
                     for d in modulos.listar_todos()],
         "ejercicios": list(cfg.ejercicios_disponibles),
+        "avisos": {"pendientes": alertas.contar()},
     }
+
+
+def metricas(*, dias: int = 7) -> dict[str, Any]:
+    """Uso y salud de la plataforma, para el panel interno.
+
+    Se calcula **desde `ejecuciones`**, que ya se escribía: lo nuevo es mirarlo de frente (cuántos
+    informes salieron, cuántos de caché, qué módulo falla, qué empresa) en vez de tener que leer la
+    tabla a mano.
+    """
+    datos = db.metricas_ejecuciones(dias)
+    datos["avisos_pendientes"] = alertas.contar()
+    datos["avisos"] = alertas.pendientes(limite=20)
+    return datos
+
+
+def avisos(*, incluir_atendidos: bool = False, limite: int = 200) -> list[dict[str, Any]]:
+    return alertas.historico(limite=limite) if incluir_atendidos else alertas.pendientes(limite=limite)
+
+
+def atender_aviso(identificador: int, actor: str) -> dict[str, Any]:
+    """Marca un aviso como atendido. Si ya lo estaba (o no existe), se dice, no se finge."""
+    if not alertas.atender(identificador, actor):
+        raise NoEncontrado("El aviso no existe o ya estaba atendido.")
+    return {"id": int(identificador), "atendido_por": actor}

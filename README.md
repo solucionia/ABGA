@@ -95,6 +95,7 @@ rango o no numérico responde **422** diciendo qué campo falla, y un campo de m
 | POST | `/api/informe/exportar` | descarga las tablas del informe (CSV o ZIP) para Excel |
 | POST | `/api/refrescar` · GET `/api/trabajos/{id}` | releer del ERP en segundo plano, con progreso |
 | GET | `/api/interno/resumen` | panel de ABGA: ejecuciones, caché, módulos, usuarios |
+| GET | `/api/interno/metricas` · `/avisos` · POST `/avisos/atender` | uso y salud (informes hechos, de caché, incompletos, fallos) y los avisos, con su cierre |
 | POST | `/api/interno/cache` · `/usuarios` · `/empresas` · `/pin` | administración (sólo rol interno) |
 | GET | `/api/salud` · `/api/cache` | diagnóstico |
 
@@ -138,20 +139,78 @@ fases en `ARQUITECTURA.md`.
 - `scripts/probe_*.py` son las sondas con las que se descubrió el comportamiento del ERP
   (paginación, límites, 429). No hacen falta en producción.
 
-## Copias de seguridad
+## Migraciones
 
-La copia la programa **Coolify** en el recurso de la base de datos (pestaña *Backups*): `pg_dump`
-en formato custom, guardada en el servidor con retención, y opcionalmente subida a un
-S3-compatible. Pero una copia no es una prueba de restauración, así que la comprobación que hay que
-pasar cada cierto tiempo es ésta:
+El esquema se versiona con **alembic** y no se aplica a mano en ningún sitio: el DDL vive en
+`backend/migraciones/versions/` y `app/esquema.py` es sólo el **contrato** (`TABLAS`), que una
+prueba contrasta con lo que crean las migraciones. `bd.conectar()` aplica lo que falte la primera vez
+que el proceso toca una base, así que no hay paso previo: arrancar ya pone la base al día.
 
 ```bash
-./.venv/bin/python backend/scripts/verificar_copia.py --copia /ruta/copia.dump
+make migrar                                   # aplica lo que falte y dice la versión
+./.venv/bin/python backend/scripts/migrar.py --estado      # en qué versión está la base
+./.venv/bin/python backend/scripts/migrar.py --historial   # qué migraciones hay
+```
+
+Para cambiar el esquema: se añade un fichero nuevo en `backend/migraciones/versions/` (plantilla
+`script.py.mako`) con su `downgrade`, y —si crea o borra tablas— se actualiza `esquema.TABLAS`.
+`backend/tests/test_migraciones.py` comprueba que una base nueva se construye, que una vieja se pone
+al día **sin perder datos** y que el contrato y las migraciones coinciden.
+
+## Copias de seguridad
+
+La copia la programa **Coolify** en el recurso de la base (pestaña *Backups*), y **ya está puesta**:
+diaria a las 01:00 UTC (**03:00 en Madrid** en verano), base `postgres` en formato custom de
+`pg_dump`, retención 7 copias / 14 días / 5 GB, guardada en el servidor. Pero una copia no es una
+prueba de restauración, así que la comprobación que hay que pasar cada cierto tiempo es ésta:
+
+```bash
+# bajar la copia de la VM (lleva datos de clientes: borrarla al terminar)
+gcloud compute ssh apps-varias --zone=europe-west1-b --quiet \
+  --command="sudo cat /data/coolify/backups/databases/root-team-0/abga-postgres-<uuid>/pg-dump-postgres-<epoch>.dmp" > /tmp/copia.dmp
+./.venv/bin/python backend/scripts/verificar_copia.py --copia /tmp/copia.dmp
 # la restaura en un PostgreSQL desechable y lee los datos con el propio código de la plataforma
 ```
 
-Su propia prueba está en `backend/tests/test_copia.py` (marcada `lento`, necesita `pgserver`).
-Detalles y decisiones pendientes: `ARQUITECTURA.md`, Fase 3.
+La última vez que se hizo (27/09/2026, con la copia real de producción): **copia válida**, 9 tablas,
+391 empresas, 2 usuarios, 75 ejecuciones, y `listar_empresas()` devolviendo las 391 sobre lo
+restaurado. Su propia prueba automática está en `backend/tests/test_copia.py` (marcada `lento`,
+necesita `pgserver`). Detalles y pendientes: `ARQUITECTURA.md`, Fase 3.
+
+## Entornos
+
+Hay **dos aplicaciones** en el mismo proyecto de Coolify, con la misma base y la misma caché:
+
+| Aplicación | URL | `APICON_SOLO_CACHE` |
+|---|---|---|
+| `abga-plataforma` (producción) | https://abga.34.76.127.144.sslip.io | vacía: lee el ERP cuando la caché no tiene el dato |
+| `abga-preview` (previsualización) | https://abga-preview.34.76.127.144.sslip.io | `1`: sólo caché, no toca el ERP |
+
+La de previsualización sirve para enseñar cambios y probar sin gastar el ERP. Comparten base (los
+mismos datos), pero **no** la `SECRET_KEY`: una sesión de una no vale en la otra. Y en producción, si
+el TTL de 12 h ha caducado, el primer informe de una empresa y ejercicio tarda lo que tarde la
+descarga (~200 s para un ejercicio completo); los que ya están en caché siguen siendo instantáneos.
+
+## Observabilidad
+
+Cada petición lleva un identificador (`X-Request-ID`): si el cliente lo manda se respeta, si no se
+genera. Vuelve en la cabecera de la respuesta, sale en **todas** las líneas de registro de esa petición
+y queda en la fila de `ejecuciones` que genera — así un informe registrado y el registro de ese
+momento se pueden atar. Con `LOG_FORMATO=json` el registro sale en una línea JSON por evento (`nivel`,
+`registro`, `id_peticion`, `mensaje`, y el rastro si hay excepción), para que lo lea un programa.
+
+```bash
+# uso y salud de los últimos 7 días (sólo rol interno)
+curl -s -b cookies.txt 'https://…/api/interno/metricas?dias=7' | jq '{total, por_estado, informes_parciales, avisos_pendientes}'
+# avisos sin atender: informes incompletos o que fallaron al calcular
+curl -s -b cookies.txt 'https://…/api/interno/avisos' | jq '.avisos[] | {id, tipo, cod_empresa, modulo, veces, detalle}'
+```
+
+Los informes que salen con el ejercicio a medias (`cobertura=parcial`) o que fallan dejan **aviso**:
+se agrupan por tipo/empresa/ejercicio/módulo (con contador, para que una caída del ERP no deje cientos
+de filas), se ven en el panel interno y se cierran a mano. `/api/salud` publica cuántos hay pendientes,
+que es lo que puede vigilar una monitorización sin ver datos de nadie. No hay correo ni webhook a
+propósito: no hay destino configurado, y eso se añadiría en un solo sitio (`app/alertas.py`).
 
 ## Pruebas
 

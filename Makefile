@@ -40,6 +40,9 @@ reales:  ## Sólo lo que usa los fixtures reales del ERP
 lento:  ## Los verificadores heredados, completos (minutos)
 	$(PY) -m pytest -m lento
 
+migrar:  ## Pone al día el esquema de la base (migraciones versionadas de alembic)
+	$(PY) backend/scripts/migrar.py
+
 cobertura:  ## Suite rápida con informe de cobertura del dominio
 	$(PY) -m pytest -m "not lento" --cov=app --cov-report=term-missing
 
@@ -55,4 +58,4 @@ tipos:  ## Comprobación de tipos (mypy)
 verificar: lint tipos pruebas  ## Lo que hay que tener en verde antes de dar algo por hecho
 	@echo "todo en verde"
 
-.PHONY: ayuda instalar pruebas rapido reales lento cobertura lint lint-fix tipos verificar
+.PHONY: ayuda instalar pruebas rapido reales lento migrar cobertura lint lint-fix tipos verificar
