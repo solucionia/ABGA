@@ -245,6 +245,26 @@ def test_la_api_devuelve_el_semaforo_sin_html(portal: Portal) -> None:
     assert cuerpo["data"]["umbrales"]["concentracion_clientes"]["valor"] == 35.0
 
 
+def test_la_api_puede_no_pedirle_nada_al_erp(portal: Portal) -> None:
+    """`solo_cache=true` deja el año sin cargar declarado en vez de irse al ERP.
+
+    Sin esto, consultar el semáforo de producción con un ejercicio sin cachear se quedaba esperando
+    al ERP (con la cuota del cliente, minutos por ejercicio), y repetirlo acaba en un 429. Se mide con
+    el contador de llamadas del ERP simulado, no con la intención del comentario.
+    """
+    portal.entrar_como_admin()
+    # 2025 está en la caché y 2024 no: se pide el año que obligaría a ir al ERP. El análisis necesita
+    # el ejercicio **y el anterior** para comparar, así que declara los dos que le faltan.
+    en_cache(EMPRESA, 2025)
+    r = portal.api.get(f"/api/analisis?cod_empresa={EMPRESA}&year=2024&solo_cache=true")
+    assert r.status_code == 200, r.text
+    assert portal.erp.n_llamadas == 0, "sólo-caché no puede pedirle nada al ERP"
+    cuerpo = r.json()
+    assert set(cuerpo["meta"]["faltantes"]) == {2023, 2024}
+    assert any("2024" in a for a in cuerpo["avisos"])
+    assert len(cuerpo["data"]["hallazgos"]) == len(mod.REGLAS), "el análisis sale igual, sin datos"
+
+
 def test_la_api_admite_los_filtros(portal: Portal) -> None:
     portal.entrar_como_admin()
     r = portal.api.get(

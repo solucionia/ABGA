@@ -355,10 +355,13 @@ declaradas como datos (`id`, familia, título, qué comprueba, cómo se calcula,
 cuatro niveles de semáforo, con los fallos de una regla aislados de las demás y los umbrales en
 constantes del principio del fichero. Lo que faltaba era la **capa de producto** alrededor:
 
-- **`GET /api/analisis?cod_empresa&year[&familia][&nivel]`**: el semáforo en JSON y **sin el HTML** del
+- **`GET /api/analisis?cod_empresa&year[&familia][&nivel][&solo_cache]`**: el semáforo en JSON y **sin el HTML** del
   informe, que es lo que necesita una pantalla con 32 fichas. Las familias y los niveles válidos los
   declara el propio módulo (`FAMILIAS`, `NIVELES`): un filtro inventado es un 400 con la lista de los
-  que valen, no un resultado vacío.
+  que valen, no un resultado vacío. Con **`solo_cache=true`** no le pide nada al ERP: los ejercicios
+  que falten salen en `meta.faltantes` y en los avisos. Se añadió porque consultar el semáforo de un
+  ejercicio sin cargar dejaba la petición esperando al ERP (minutos por ejercicio, y un 429 si se
+  insiste): pedirlo ahora es una decisión explícita, y es lo que usan la cartera y la previsualización.
 - **Los filtros ahora filtran de verdad.** `familia` estaba declarado en `PARAMETROS`… y no se usaba en
   ninguna parte: el portal podía pedir `familia=financiero` y recibir las 32 comprobaciones igual.
   Ahora el resultado trae `seleccion` (lo que pasa el filtro), `filtro` (qué se aplicó y cuántas

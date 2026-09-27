@@ -92,7 +92,7 @@ rango o no numérico responde **422** diciendo qué campo falla, y un campo de m
 | POST | `/api/login` · `/api/logout` · `/api/registro` | sesión (token firmado, cookie httpOnly) y alta del cliente con el PIN de la asesoría |
 | GET | `/api/yo` · `/api/empresas` · `/api/modulos` · `/api/ejercicios` | contexto del usuario |
 | GET | `/api/dashboard?cod_empresa&year` | KPIs y series en JSON agregado (~9 KB, no los apuntes) |
-| GET | `/api/analisis?cod_empresa&year[&familia][&nivel]` | el semáforo de «Análisis y alertas» en JSON, **sin** el HTML, con recorte por familia y nivel |
+| GET | `/api/analisis?cod_empresa&year[&familia][&nivel][&solo_cache]` | el semáforo de «Análisis y alertas» en JSON, **sin** el HTML, con recorte por familia y nivel; `solo_cache=true` no pide nada al ERP (deja los años sin cargar declarados en `meta.faltantes`) |
 | POST | `/api/informe` | genera un informe y devuelve `{status, html, data, meta, avisos}` |
 | POST | `/api/informe/exportar` | descarga las tablas del informe (CSV o ZIP) para Excel |
 | POST | `/api/refrescar` · GET `/api/trabajos/{id}` | releer del ERP en segundo plano, con progreso |
@@ -162,6 +162,19 @@ Para cambiar el esquema: se añade un fichero nuevo en `backend/migraciones/vers
 `script.py.mako`) con su `downgrade`, y —si crea o borra tablas— se actualiza `esquema.TABLAS`.
 `backend/tests/test_migraciones.py` comprueba que una base nueva se construye, que una vieja se pone
 al día **sin perder datos** y que el contrato y las migraciones coinciden.
+
+La prueba que de verdad importa antes de un despliegue con migración es esa misma, pero sobre **una
+copia real de producción** (el mismo fichero que se baja para las comprobaciones de restauración, ver
+*Copias de seguridad*): se restaura en un PostgreSQL desechable, se cuentan las filas antes y después y
+se comprueba que la base queda en la última versión con todas las tablas del contrato.
+
+```bash
+COPIA_PRODUCCION=/tmp/copia.dmp ./.venv/bin/python -m pytest backend/tests/test_migraciones.py -m lento
+```
+
+Sin `COPIA_PRODUCCION` la prueba se omite, porque la copia lleva datos de clientes y no vive en el
+repositorio. Con ella, la copia tiene que ser de **antes** de la última migración: si ya está al día,
+la prueba lo dice en vez de pasar en falso. Y el fichero se borra al terminar.
 
 ## Copias de seguridad
 
@@ -239,6 +252,9 @@ curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025' | j
 curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025&nivel=alerta&familia=financiero' | jq '.data.seleccion[] | .titulo'
 # los criterios que se están aplicando (se publican con el resultado, con su origen)
 curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025' | jq '.data.umbrales'
+
+# y sin pedirle nada al ERP: con un año sin cargar, declara lo que falta en vez de ir a buscarlo
+curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025&solo_cache=true' | jq '{faltantes: .meta.faltantes, avisos}'
 
 # con qué se mide a un cliente, y ajustarlo (valor null = volver al general)
 curl -s -b cookies.txt 'https://…/api/interno/umbrales?cod_empresa=6091' | jq '{ajustados, umbrales: (.umbrales | map_values(.valor))}'

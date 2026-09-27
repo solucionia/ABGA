@@ -47,15 +47,20 @@ def dashboard(cod_empresa: str = Query(...), year: int = Query(..., ge=2000, le=
 def analisis(cod_empresa: str = Query(...), year: int = Query(..., ge=2000, le=2100),
              familia: str | None = Query(None, description="Recorta a una familia de análisis"),
              nivel: str | None = Query(None, description="Recorta a un nivel del semáforo"),
+             solo_cache: bool = Query(False, description="No pedir nada al ERP: sólo la caché"),
              us: dict[str, Any] = Depends(usuario_actual)) -> RespuestaAnalisis:
     """El catálogo de comprobaciones con su semáforo, en JSON, para pintar una pantalla.
 
     `data.hallazgos` trae todas las comprobaciones y `data.seleccion` las que pasan el filtro: el
     resumen (`data.resumen`) cuenta siempre todas, para que el semáforo no se recorte con el filtro.
+
+    Con `solo_cache=true` no se le pide nada al ERP: los ejercicios que no estén cargados salen en
+    `meta.faltantes` y en los avisos. Es lo que hay que usar para consultar producción (o un año sin
+    cargar) sin arriesgar una espera larga o un 429, y lo que usan la cartera y la previsualización.
     """
     cod = empresa_permitida(us, cod_empresa)
     r = casos.analisis(cod, year, familia=familia, nivel=nivel, email=us["email"],
-                       es_interno=casos_sesion.es_interno(us))
+                       es_interno=casos_sesion.es_interno(us), solo_cache=solo_cache)
     return RespuestaAnalisis(**{k: v for k, v in r.como_json().items()
                                 if k in RespuestaAnalisis.model_fields})
 

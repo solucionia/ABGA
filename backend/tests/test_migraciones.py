@@ -179,7 +179,14 @@ def test_las_migraciones_se_aplican_a_una_copia_de_produccion(tmp_path: pathlib.
         tablas = ("empresas", "usuarios", "permisos", "ejecuciones")
         antes = {t: contar(t) for t in tablas}
         assert antes["empresas"] > 100, "la copia no parece la de producción"
-        assert migraciones.version() is None, "la copia ya venía con migraciones versionadas"
+        # La copia vale si viene de **antes** de la última migración: puede ser de antes de las
+        # migraciones versionadas (`None`, el caso de una base antigua) o de una versión anterior
+        # (el caso real de cada despliegue). Una copia ya al día no mediría nada, y eso se avisa en
+        # vez de darla por buena. Coolify guarda copias diarias y semanales: hay donde elegir.
+        version_copia = migraciones.version()
+        assert version_copia != migraciones.cabecera(), (
+            f"la copia ya está en la última versión ({version_copia}): no queda nada por migrar. "
+            "Pásale una copia anterior a la última migración.")
 
         bd.conectar()   # aquí es donde se ponen al día las migraciones
 
@@ -192,6 +199,13 @@ def test_las_migraciones_se_aplican_a_una_copia_de_produccion(tmp_path: pathlib.
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name='empresas'").fetchall()}
         assert "pin_hash" in columnas
+        # Y el contrato completo: migrar una base de producción deja todas las tablas del esquema
+        # (incluida `umbrales_empresa`, de la 0003) y no sólo las que ya estaban.
+        presentes = {fila["table_name"] for fila in con.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema='public'").fetchall()}
+        assert set(esquema.TABLAS) <= presentes, (
+            f"tras migrar faltan tablas: {sorted(set(esquema.TABLAS) - presentes)}")
     finally:
         bd.reiniciar()
         shutil.rmtree(tmp_path / "pg", ignore_errors=True)

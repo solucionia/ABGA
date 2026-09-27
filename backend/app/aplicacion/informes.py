@@ -27,10 +27,19 @@ class Exportacion:
 
 def _resultado(modulo: str, *, cod_empresa: str, year: int, params: dict[str, Any],
                email: str, origen: str, forzar: bool = False,
-               con_html: bool = True) -> servicio.Resultado:
-    """Ejecuta el informe y traduce el fallo: el ERP es un 502, el resto es un 400."""
-    r = servicio.ejecutar(modulo, cod_empresa=cod_empresa, year=year, params=params,
-                          email=email, origen=origen, forzar=forzar, con_html=con_html)
+               con_html: bool = True, solo_cache: bool = False) -> servicio.Resultado:
+    """Ejecuta el informe y traduce el fallo: el ERP es un 502, el resto es un 400.
+
+    Con `solo_cache` no se le pide nada al ERP (ver `servicio.ejecutar_solo_cache`): es lo que permite
+    consultar la plataforma con un ejercicio que no está cargado sin dejar la petición esperando al
+    ERP, que con la cuota del cliente puede ser minutos y, si se insiste, un 429.
+    """
+    if solo_cache:
+        r = servicio.ejecutar_solo_cache(modulo, cod_empresa=cod_empresa, year=year, params=params,
+                                        email=email, origen=origen, con_html=con_html)
+    else:
+        r = servicio.ejecutar(modulo, cod_empresa=cod_empresa, year=year, params=params,
+                              email=email, origen=origen, forzar=forzar, con_html=con_html)
     if r.status != "ok":
         mensaje = r.error or f"No se pudo generar el informe {modulo}."
         if r.tipo == "erp":
@@ -64,7 +73,7 @@ def ejecutar(nombre: str, *, cod_empresa: str, year: int, params: dict[str, Any]
 
 
 def analisis(cod_empresa: str, year: int, *, familia: str | None = None, nivel: str | None = None,
-             email: str, es_interno: bool = False) -> servicio.Resultado:
+             email: str, es_interno: bool = False, solo_cache: bool = False) -> servicio.Resultado:
     """El semáforo de «Análisis y alertas» **sin el HTML**, para que el panel lo pinte.
 
     El informe (POST /api/informe) ya devolvía los números en `data`, pero con el HTML al lado, y
@@ -85,7 +94,7 @@ def analisis(cod_empresa: str, year: int, *, familia: str | None = None, nivel: 
             f"Nivel desconocido: {nivel}. Válidos: {', '.join(sorted(niveles))}.")
     params = {k: v for k, v in (("familia", familia), ("nivel", nivel)) if v}
     return _resultado("analisis", cod_empresa=cod_empresa, year=year, params=params, email=email,
-                      origen="panel", con_html=False)
+                      origen="panel", con_html=False, solo_cache=solo_cache)
 
 
 def exportar(nombre: str, *, cod_empresa: str, year: int, params: dict[str, Any] | None = None,
