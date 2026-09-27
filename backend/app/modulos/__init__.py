@@ -10,8 +10,9 @@ Contrato que cumple cada módulo (`app/modulos/<nombre>.py`):
 
     def calcular(por_anio: dict[int, list[Linea]], ctx: dict) -> dict     # números
     def informe_html(datos: dict, ctx: dict) -> str                       # HTML puro
-    # opcional
+    # opcionales
     def metricas_dashboard(datos: dict) -> dict
+    def avisos_de_datos(datos: dict) -> list[dict]   # [{"tipo": ..., "detalle": ...}]
 
 `ctx` siempre trae: empresa (nombre), cod_empresa, year, year_anterior, nombre_mes,
 trimestre, email, y los PARAMETROS ya resueltos.
@@ -87,6 +88,20 @@ class Definicion:
     def metricas_dashboard(self, datos: dict) -> dict:
         f = getattr(self.modulo, "metricas_dashboard", None)
         return f(datos) if f else {}
+
+    def avisos_de_datos(self, datos: dict) -> list[dict[str, Any]]:
+        """Avisos que el propio módulo pide dejar apuntados (`app/alertas.py`).
+
+        Lo lee `servicio.ejecutar` tras un cálculo correcto: así un módulo puede decir «esto no
+        puede pasar desapercibido» sin que el servicio tenga que conocer su nombre ni sus umbrales.
+        El módulo declara el tipo y el texto; que el tipo exista y que los repetidos se agrupen es
+        cosa de `alertas`.
+        """
+        f = getattr(self.modulo, "avisos_de_datos", None)
+        try:
+            return list(f(datos)) if f else []
+        except Exception:  # un aviso no puede tumbar el informe que ya está calculado
+            return []
 
 
 _cache: dict[str, Definicion] = {}

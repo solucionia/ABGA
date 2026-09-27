@@ -26,10 +26,11 @@ class Exportacion:
 
 
 def _resultado(modulo: str, *, cod_empresa: str, year: int, params: dict[str, Any],
-               email: str, origen: str, forzar: bool = False) -> servicio.Resultado:
+               email: str, origen: str, forzar: bool = False,
+               con_html: bool = True) -> servicio.Resultado:
     """Ejecuta el informe y traduce el fallo: el ERP es un 502, el resto es un 400."""
     r = servicio.ejecutar(modulo, cod_empresa=cod_empresa, year=year, params=params,
-                          email=email, origen=origen, forzar=forzar)
+                          email=email, origen=origen, forzar=forzar, con_html=con_html)
     if r.status != "ok":
         mensaje = r.error or f"No se pudo generar el informe {modulo}."
         if r.tipo == "erp":
@@ -56,10 +57,35 @@ def modulo_pedido(nombre: str, *, es_interno: bool) -> modulos.Definicion:
 
 def ejecutar(nombre: str, *, cod_empresa: str, year: int, params: dict[str, Any] | None = None,
              email: str, origen: str = "portal", forzar: bool = False,
-             es_interno: bool = False) -> servicio.Resultado:
+             es_interno: bool = False, con_html: bool = True) -> servicio.Resultado:
     modulo_pedido(nombre, es_interno=es_interno)
     return _resultado(nombre, cod_empresa=cod_empresa, year=year, params=params or {},
-                      email=email, origen=origen, forzar=forzar)
+                      email=email, origen=origen, forzar=forzar, con_html=con_html)
+
+
+def analisis(cod_empresa: str, year: int, *, familia: str | None = None, nivel: str | None = None,
+             email: str, es_interno: bool = False) -> servicio.Resultado:
+    """El semáforo de «Análisis y alertas» **sin el HTML**, para que el panel lo pinte.
+
+    El informe (POST /api/informe) ya devolvía los números en `data`, pero con el HTML al lado, y
+    una pantalla que quiere 33 fichas con su semáforo no necesita maquetar el informe entero. Aquí
+    se devuelve sólo el dato, y se admite el recorte por familia y por nivel.
+
+    Las familias y los niveles válidos los declara el propio módulo (`FAMILIAS`, `NIVELES`): si
+    mañana se añade una familia, esta validación la admite sin tocar nada.
+    """
+    definicion = modulo_pedido("analisis", es_interno=es_interno)
+    familias = {clave for clave, _ in getattr(definicion.modulo, "FAMILIAS", [])}
+    niveles = set(getattr(definicion.modulo, "NIVELES", ()))
+    if familia and familia not in familias:
+        raise EntradaInvalida(
+            f"Familia desconocida: {familia}. Válidas: {', '.join(sorted(familias))}.")
+    if nivel and nivel not in niveles:
+        raise EntradaInvalida(
+            f"Nivel desconocido: {nivel}. Válidos: {', '.join(sorted(niveles))}.")
+    params = {k: v for k, v in (("familia", familia), ("nivel", nivel)) if v}
+    return _resultado("analisis", cod_empresa=cod_empresa, year=year, params=params, email=email,
+                      origen="panel", con_html=False)
 
 
 def exportar(nombre: str, *, cod_empresa: str, year: int, params: dict[str, Any] | None = None,

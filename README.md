@@ -83,7 +83,8 @@ Contrato para añadir uno nuevo: `backend/CONTRATO-MODULOS.md`.
 
 ## API
 
-Todo el contrato está tipado con Pydantic y publicado en `/docs` (**33 esquemas**): el año fuera de
+Todo el contrato está tipado con Pydantic y publicado en `/docs` (**39 esquemas** y 27 rutas,
+contados sobre el `openapi()` de la aplicación): el año fuera de
 rango o no numérico responde **422** diciendo qué campo falla, y un campo de más también es error.
 
 | Método | Ruta | Qué hace |
@@ -91,11 +92,13 @@ rango o no numérico responde **422** diciendo qué campo falla, y un campo de m
 | POST | `/api/login` · `/api/logout` · `/api/registro` | sesión (token firmado, cookie httpOnly) y alta del cliente con el PIN de la asesoría |
 | GET | `/api/yo` · `/api/empresas` · `/api/modulos` · `/api/ejercicios` | contexto del usuario |
 | GET | `/api/dashboard?cod_empresa&year` | KPIs y series en JSON agregado (~9 KB, no los apuntes) |
+| GET | `/api/analisis?cod_empresa&year[&familia][&nivel]` | el semáforo de «Análisis y alertas» en JSON, **sin** el HTML, con recorte por familia y nivel |
 | POST | `/api/informe` | genera un informe y devuelve `{status, html, data, meta, avisos}` |
 | POST | `/api/informe/exportar` | descarga las tablas del informe (CSV o ZIP) para Excel |
 | POST | `/api/refrescar` · GET `/api/trabajos/{id}` | releer del ERP en segundo plano, con progreso |
 | GET | `/api/interno/resumen` | panel de ABGA: ejecuciones, caché, módulos, usuarios |
 | GET | `/api/interno/metricas` · `/avisos` · POST `/avisos/atender` | uso y salud (informes hechos, de caché, incompletos, fallos) y los avisos, con su cierre |
+| GET | `/api/interno/cartera?year[&limite][&desde]` | semáforo de análisis de todos los clientes, ordenado por gravedad (sólo caché) |
 | POST | `/api/interno/cache` · `/usuarios` · `/empresas` · `/pin` | administración (sólo rol interno) |
 | GET | `/api/salud` · `/api/cache` | diagnóstico |
 
@@ -211,6 +214,41 @@ se agrupan por tipo/empresa/ejercicio/módulo (con contador, para que una caída
 de filas), se ven en el panel interno y se cierran a mano. `/api/salud` publica cuántos hay pendientes,
 que es lo que puede vigilar una monitorización sin ver datos de nadie. No hay correo ni webhook a
 propósito: no hay destino configurado, y eso se añadiría en un solo sitio (`app/alertas.py`).
+
+## Análisis y cartera
+
+`analisis` no es un informe más: es un **catálogo de comprobaciones** que se ejecutan sobre los apuntes
+y salen clasificadas por riesgo (rojo · actuar, naranja · revisar, verde · correcto, gris · los apuntes
+no traen el dato). Hoy son **32 comprobaciones** de cinco familias (contable, fiscal, financiero,
+mercantil, laboral) y **añadir una es declarar una entrada en `REGLAS`** —qué comprueba, cómo se
+calcula y una función que devuelve el nivel—, nada más. Una regla que falle no tumba el informe: sale
+en gris diciendo qué pasó.
+
+Dos reglas de la casa que el catálogo respeta: **ninguna cifra se estima** y **sin apuntes no hay
+verde**. Si el libro no da un dato, la comprobación dice cuál falta en lugar de rellenarlo; y si el
+ejercicio no tiene apuntes cargados, todo sale en gris (antes 12 comprobaciones salían verdes por
+buscar ausencias, que es decir «todo bien» de lo que no se sabe).
+
+```bash
+# el semáforo de un cliente, para una pantalla (sin el HTML del informe)
+curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025' | jq '.data.resumen'
+# sólo lo que exige actuación, y las familias financieras
+curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025&nivel=alerta&familia=financiero' | jq '.data.seleccion[] | .titulo'
+# los umbrales que se están aplicando (se publican con el resultado)
+curl -s -b cookies.txt 'https://…/api/analisis?cod_empresa=6091&year=2025' | jq '.data.umbrales'
+# la cartera del despacho: quién está en rojo, por cuánto y por qué (sólo rol interno)
+curl -s -b cookies.txt 'https://…/api/interno/cartera?year=2025&limite=30' | jq '.filas[] | {empresa, n_rojo, importe_riesgo, rojos}'
+```
+
+La **cartera** es la vista que convierte el despacho en asesoría: en vez de abrir cliente por cliente,
+una lista con quién tiene rojos. Se calcula **sólo con los ejercicios que ya están en la caché** (no se
+le pide nada al ERP: con 391 clientes serían horas y un 429) y por tandas (`limite`/`desde`, con
+`pendientes` en la respuesta). Los clientes que no tienen el ejercicio cargado se declaran
+(`sin_el_ejercicio`, `sin_datos`), no se rellenan.
+
+Los rojos **dejan aviso** (`tipo=analisis_rojo`): el módulo declara qué hay que apuntar con un hook
+opcional (`avisos_de_datos`) y el servicio lo apunta agrupado por empresa y ejercicio, así que un rojo
+no depende de que alguien abra el panel para existir.
 
 ## Pruebas
 

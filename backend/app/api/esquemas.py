@@ -214,6 +214,28 @@ class RespuestaDashboard(RespuestaOk):
     avisos: list[str] = Field(default_factory=list)
 
 
+class RespuestaAnalisis(RespuestaOk):
+    """El semáforo de «Análisis y alertas» en JSON: `data.hallazgos` trae las comprobaciones y
+    `data.seleccion` las que pasan el filtro pedido."""
+
+    data: dict[str, Any]
+    meta: dict[str, Any]
+    avisos: list[str] = Field(default_factory=list)
+
+
+class RespuestaCartera(RespuestaOk):
+    """Cartera de análisis del panel interno de ABGA (sólo caché, nunca el ERP)."""
+
+    year: int
+    filas: list[dict[str, Any]]
+    fallos: list[dict[str, Any]]
+    totales: dict[str, Any]
+    desde: int
+    limite: int
+    segundos: float
+    avisos: list[str] = Field(default_factory=list)
+
+
 class RespuestaTrabajo(RespuestaOk):
     trabajo: dict[str, Any]
 

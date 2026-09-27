@@ -139,10 +139,91 @@ def _veredicto_cobertura(traza: dict[str, Any]) -> str:
     return "completa" if all(lecturas) else ""
 
 
+def _cargar_del_erp(cod_empresa: str, years: list[int], forzar: bool) -> tuple[dict[int, list[Linea]], dict[str, Any]]:
+    return cargar_ejercicios(cod_empresa, years, forzar=forzar)
+
+
+def _cargar_solo_cache(cod_empresa: str, years: list[int], forzar: bool) -> tuple[dict[int, list[Linea]], dict[str, Any]]:
+    """Los mismos ejercicios que `cargar_ejercicios`, pero **sin salir a la red**.
+
+    Se lee de la caché sin caducidad (`ttl=-1`): no importa de cuándo sea el dato, no se va a pedir
+    otro. Los ejercicios que no estén cargados se declaran en `faltantes` en vez de leerse del ERP.
+
+    Existe porque hay consultas que recorren **muchas** empresas a la vez (la cartera de análisis
+    del panel interno son 391 clientes): con el ERP en medio serían horas de espera y un 429
+    garantizado. Y porque hay entornos (previsualización, `APICON_SOLO_CACHE`) en los que pedir al
+    ERP es exactamente lo que no se quiere hacer.
+    """
+    por_anio: dict[int, list[Linea]] = {}
+    traza: dict[str, Any] = {"ejercicios": {}, "desde_cache": True, "segundos_erp": 0.0,
+                             "cerrados": [], "omitidos_por_alta": [], "faltantes": []}
+    alta = (db.empresa(cod_empresa) or {}).get("ejercicio_inicio")
+    if alta:
+        traza["omitidos_por_alta"] = sorted(y for y in years if y < int(alta))
+        years = sorted(y for y in years if y >= int(alta))
+
+    for y in years:
+        info = cache.leer_apuntes(cod_empresa, y, ttl=-1)
+        if not info:
+            traza["faltantes"].append(y)
+            continue
+        crudo = lineas_de_asientos(info["asientos"])
+        cierre = detectar_cierre(crudo)
+        por_anio[y] = cierre["lineas_operativas"] if cierre["cerrado"] else crudo
+        if cierre["cerrado"]:
+            traza["cerrados"].append(y)
+        traza["ejercicios"][y] = {
+            "n_asientos": info["n_asientos"], "n_lineas": info["n_lineas"], "desde_cache": True,
+            "cobertura": info.get("cobertura"), "actualizado": info.get("actualizado"),
+            "segundos": info.get("segundos"), "resultados_totales": info.get("resultados_totales"),
+            "cerrado": cierre["cerrado"], "resultado_libro": cierre["resultado_libro"],
+            "lineas_cierre": cierre["n_lineas_fuera"],
+        }
+    return por_anio, traza
+
+
+def _aviso_faltantes(datos: dict[str, Any], traza: dict[str, Any]) -> None:
+    """Declara los ejercicios que faltaban en la caché (camino sin ERP).
+
+    Sin este aviso, un ejercicio sin cargar se ve igual que un ejercicio sin apuntes: el informe
+    saldría en gris sin decir que el problema es de carga, no de contabilidad.
+    """
+    faltan = sorted(int(y) for y in (traza.get("faltantes") or []))
+    if faltan:
+        datos.setdefault("avisos", []).append(
+            "No se han pedido al ERP estos ejercicios, porque esta consulta sólo lee de la caché: "
+            + ", ".join(str(y) for y in faltan) + ". Los análisis que los necesitan salen sin evaluar.")
+
+
 def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[str, Any] | None = None,
              email: str | None = None, origen: str = "portal", forzar: bool = False,
              con_html: bool = True) -> Resultado:
-    """Calcula un módulo de principio a fin, con los errores controlados."""
+    """Calcula un módulo leyendo del ERP lo que falte (caché primero)."""
+    return _ejecutar(nombre_modulo, cod_empresa=cod_empresa, year=year, params=params, email=email,
+                     origen=origen, forzar=forzar, con_html=con_html, solo_cache=False)
+
+
+def ejecutar_solo_cache(nombre_modulo: str, *, cod_empresa: str, year: int,
+                        params: dict[str, Any] | None = None, email: str | None = None,
+                        origen: str = "cartera", con_html: bool = False) -> Resultado:
+    """Calcula un módulo **sin pedir nada al ERP**: sólo con los ejercicios ya cargados.
+
+    Es la puerta que usan las consultas que recorren muchas empresas (la cartera de análisis del
+    panel interno) y los entornos de previsualización. Si un ejercicio no está en la caché, se
+    declara en los avisos y en `meta.faltantes`; no se rellena con una lectura del ERP.
+    """
+    return _ejecutar(nombre_modulo, cod_empresa=cod_empresa, year=year, params=params, email=email,
+                     origen=origen, forzar=False, con_html=con_html, solo_cache=True)
+
+
+def _ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[str, Any] | None,
+              email: str | None, origen: str, forzar: bool, con_html: bool,
+              solo_cache: bool) -> Resultado:
+    """Calcula un módulo de principio a fin, con los errores controlados.
+
+    `solo_cache` sólo cambia **de dónde salen los apuntes** (la caché o el ERP), no lo que se hace
+    con ellos: el mismo cálculo, el mismo registro y los mismos avisos por los dos caminos.
+    """
     inicio = time.perf_counter()
     peticion = observabilidad.id_actual()   # ata las filas y los avisos con las líneas de registro
     definicion = modulos.obtener(nombre_modulo)
@@ -155,12 +236,13 @@ def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[st
                          tipo="no_disponible")
 
     ctx = _contexto(definicion, cod_empresa=cod_empresa, year=year, params=params or {})
+    cargar = _cargar_solo_cache if solo_cache else _cargar_del_erp
     try:
-        por_anio, traza = cargar_ejercicios(cod_empresa, modulos.anios_necesarios(nombre_modulo, year),
-                                            forzar=forzar)
+        por_anio, traza = cargar(cod_empresa, modulos.anios_necesarios(nombre_modulo, year), forzar)
         datos = definicion.calcular(por_anio, ctx)
         datos.setdefault("avisos", [])
         _aviso_cierre(datos, traza)
+        _aviso_faltantes(datos, traza)
         html = definicion.informe_html(datos, ctx) if con_html else ""
         if con_html and not html.lstrip().startswith("<div"):
             raise ValueError("el módulo no devolvió HTML empezando por <div>")
@@ -203,6 +285,12 @@ def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[st
         alertas.avisar("cobertura_parcial", cod_empresa=cod_empresa, ejercicio=year,
                        modulo=nombre_modulo, detalle=f"ejercicios incompletos: {parciales}",
                        origen=origen, email=email or "", id_peticion=peticion)
+    # Lo que el propio módulo pide que no pase desapercibido (p. ej. los rojos del semáforo de
+    # análisis). El módulo declara tipo y texto; el servicio no conoce sus reglas.
+    for aviso in definicion.avisos_de_datos(datos):
+        alertas.avisar(str(aviso.get("tipo") or ""), cod_empresa=cod_empresa, ejercicio=year,
+                       modulo=nombre_modulo, detalle=str(aviso.get("detalle") or ""),
+                       origen=origen, email=email or "", id_peticion=peticion)
     return Resultado(
         status="ok", html=html, data=datos, avisos=datos.get("avisos") or [],
         meta={
@@ -211,6 +299,7 @@ def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[st
             "segundos": round(segundos, 2), "desde_cache": bool(traza["desde_cache"]),
             "segundos_erp": round(traza["segundos_erp"], 2), "ejercicios": traza["ejercicios"],
             "cerrados": traza.get("cerrados") or [],
+            "faltantes": sorted(int(y) for y in (traza.get("faltantes") or [])),
             "generado": cache.ahora(),
         },
     )

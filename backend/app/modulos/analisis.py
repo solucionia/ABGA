@@ -46,9 +46,12 @@ NOMBRE = "analisis"
 TITULO = "Análisis y alertas"
 INTERNO = False
 DESPLAZAMIENTOS = [0, -1]
-PARAMETROS: dict[str, Any] = {"familia": None}
+# `familia` y `nivel` recortan lo que se enseña (el resumen del semáforo sigue siendo el de TODAS
+# las comprobaciones: si el semáforo contara sólo lo filtrado, mentiría).
+PARAMETROS: dict[str, Any] = {"familia": None, "nivel": None}
 
 ALERTA, AVISO, OK, NO_EVALUABLE = "alerta", "aviso", "ok", "no_evaluable"
+NIVELES = (ALERTA, AVISO, OK, NO_EVALUABLE)
 ORDEN_NIVEL = {ALERTA: 0, AVISO: 1, NO_EVALUABLE: 2, OK: 3}
 
 COLOR = {ALERTA: "#c62828", AVISO: "#b26a00", OK: "#2e7d32", NO_EVALUABLE: "#6b7280"}
@@ -104,6 +107,36 @@ def _num_documento(documento: str) -> tuple[str, int] | None:
 
 def _meses_con_movimiento(lineas: Iterable[Linea], prefijos: Sequence[str]) -> set[int]:
     return {mes_de(l.fecha) for l in lineas if any(l.cuenta.startswith(p) for p in prefijos)}
+
+
+def umbrales() -> dict[str, Any]:
+    """Los umbrales que se están aplicando, con su unidad y para qué son.
+
+    Se publican con el resultado para que el informe, el panel y la conversación con ABGA hablen de
+    los mismos números: cambiar un criterio es cambiar una constante de arriba, no buscar el «35» o
+    el «90» por el fichero.
+    """
+    return {
+        "347_operaciones": {"valor": UMBRAL_347, "unidad": "€",
+                            "para": "obligación de incluir a un tercero en el modelo 347"},
+        "concentracion_clientes": {"valor": UMBRAL_CONCENTRACION, "unidad": "%",
+                                   "para": "peso máximo de un cliente sobre el saldo pendiente"},
+        "antiguedad_clientes": {"valor": UMBRAL_ANTIGUEDAD, "unidad": "días",
+                                "para": "antigüedad a partir de la cual se avisa del saldo vivo"},
+        "endeudamiento": {"valor": UMBRAL_ENDEUDAMIENTO, "unidad": "%",
+                          "para": "deuda máxima sobre el activo total"},
+        "tipo_impuesto_sociedades": {"valor": TIPO_IS, "unidad": "tanto por uno",
+                                     "para": "estimación del modelo 202 sobre el resultado contable"},
+        "auditoria": {"valor": dict(AUDITORIA), "unidad": "magnitudes",
+                      "para": "límites de activo, cifra de negocios y empleados del deber de auditar"},
+    }
+
+
+def filtrar(hallazgos: Sequence[dict[str, Any]], *, familia: str | None = None,
+            nivel: str | None = None) -> list[dict[str, Any]]:
+    """El recorte por familia y/o nivel. Un análisis es de una sola familia y de un solo nivel."""
+    return [h for h in hallazgos
+            if (not familia or h["familia"] == familia) and (not nivel or h["nivel"] == nivel)]
 
 
 # ------------------------------------------------------------------ contexto
@@ -758,12 +791,20 @@ REGLAS: list[Regla] = [
 # ------------------------------------------------------------------ cálculo
 
 def _evaluar(c: dict) -> list[dict[str, Any]]:
+    sin_apuntes = not c["n_lineas"]
     salida = []
     for regla in REGLAS:
-        try:
-            r = regla.evaluar(c)
-        except Exception as e:  # una regla rota no puede tumbar el informe entero
-            r = _res(NO_EVALUABLE, f"la comprobación no se ha podido ejecutar ({type(e).__name__}).")
+        if sin_apuntes:
+            # Un ejercicio sin apuntes no está «correcto»: está sin datos. Muchas comprobaciones
+            # buscan ausencias (no hay duplicados, sin saldos con socios, sin deudas con Hacienda),
+            # así que en un ejercicio vacío salían VERDES: decir «todo bien» de lo que no se sabe es
+            # justo lo que la casa no hace. En gris y con el motivo, todas.
+            r = _res(NO_EVALUABLE, "no hay apuntes en el ejercicio.")
+        else:
+            try:
+                r = regla.evaluar(c)
+            except Exception as e:  # una regla rota no puede tumbar el informe entero
+                r = _res(NO_EVALUABLE, f"la comprobación no se ha podido ejecutar ({type(e).__name__}).")
         r = {**r, "id": regla.id, "familia": regla.familia, "titulo": regla.titulo,
              "comprueba": regla.comprueba, "como": regla.como}
         salida.append(r)
@@ -774,6 +815,16 @@ def _evaluar(c: dict) -> list[dict[str, Any]]:
 def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str, Any]:
     c = _contexto(por_anio, ctx)
     hallazgos = _evaluar(c)
+
+    # El recorte que pida el portal (familia y/o nivel) no toca el resumen: el semáforo cuenta
+    # siempre las comprobaciones de todas las familias, y `seleccion` es lo que se enseña.
+    familia = (ctx.get("familia") or "").strip() or None
+    nivel = str(ctx.get("nivel") or "").strip().lower() or None
+    if familia and familia not in dict(FAMILIAS):
+        raise ValueError(f"familia desconocida: {familia}")
+    if nivel and nivel not in NIVELES:
+        raise ValueError(f"nivel desconocido: {nivel}")
+    seleccion = filtrar(hallazgos, familia=familia, nivel=nivel)
 
     recuento = {n: sum(1 for h in hallazgos if h["nivel"] == n)
                 for n in (ALERTA, AVISO, OK, NO_EVALUABLE)}
@@ -816,6 +867,10 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str,
                                         if h["nivel"] in (ALERTA, AVISO)), 2),
         },
         "hallazgos": hallazgos,
+        "seleccion": seleccion,
+        "filtro": {"familia": familia, "nivel": nivel, "aplicado": bool(familia or nivel),
+                   "n_seleccionados": len(seleccion), "n_total": len(hallazgos)},
+        "umbrales": umbrales(),
         "por_familia": {f: por_familia.get(f, []) for f, _ in FAMILIAS},
         "n_lineas": c["n_lineas"],
         "cuadre": c["cuadre"],
@@ -831,6 +886,26 @@ def metricas_dashboard(datos: dict[str, Any]) -> dict[str, Any]:
         "n_no_evaluable": r.get("n_no_evaluable", 0), "nivel_global": r.get("nivel_global", ""),
         "importe_riesgo": r.get("importe_riesgo", 0.0),
     }
+
+
+def avisos_de_datos(datos: dict[str, Any]) -> list[dict[str, Any]]:
+    """Los rojos del semáforo, para que queden apuntados sin que nadie abra el informe.
+
+    Los verdes y los «no evaluables» son información del informe, no una incidencia: aquí sólo
+    salen los que exigen actuación. El aviso lleva el recuento y los títulos (no el informe
+    entero) y se agrupa por empresa y ejercicio, así que un mes entero de revisiones deja un aviso
+    con su contador, no uno por consulta.
+    """
+    r = datos.get("resumen") or {}
+    if not r.get("n_rojo"):
+        return []
+    titulos = [str(h.get("titulo")) for h in datos.get("hallazgos") or []
+               if h.get("nivel") == ALERTA][:8]
+    return [{
+        "tipo": "analisis_rojo",
+        "detalle": f"{r['n_rojo']} de {r.get('n_total', 0)} comprobaciones en rojo: "
+                   + "; ".join(titulos),
+    }]
 
 
 # ------------------------------------------------------------------ informe
@@ -915,6 +990,8 @@ def _detalle_datos(h: dict[str, Any]) -> str:
 
 def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
     r = datos["resumen"]
+    filtro = datos.get("filtro") or {}
+    familia_f, nivel_f = filtro.get("familia"), filtro.get("nivel")
     global_aviso = {ALERTA: ("error", f"{r['n_rojo']} comprobaciones en rojo requieren actuación."),
                     AVISO: ("alerta", f"{r['n_naranja']} comprobaciones en naranja conviene revisarlas."),
                     OK: ("ok", "Todas las comprobaciones evaluables han salido correctas."),
@@ -924,8 +1001,16 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
         _semaforo(datos),
         inf.aviso(global_aviso[1], tipo=global_aviso[0], titulo="Resultado del semáforo"),
     ]
+    if filtro.get("aplicado"):
+        partes.append(inf.aviso(
+            f"Este informe va recortado: se enseñan {filtro['n_seleccionados']} de las "
+            f"{filtro['n_total']} comprobaciones"
+            + (f" (familia «{_titulo_familia(familia_f)}»)" if familia_f else "")
+            + (f" (sólo nivel «{ETIQUETA[nivel_f]}»)" if nivel_f else "")
+            + ". El semáforo de arriba cuenta siempre todas.", tipo="info", titulo="Filtro aplicado"))
 
-    rojos = [h for h in datos["hallazgos"] if h["nivel"] in (ALERTA, AVISO)]
+    rojos = ([h for h in datos["hallazgos"] if h["nivel"] == nivel_f] if nivel_f
+             else [h for h in datos["hallazgos"] if h["nivel"] in (ALERTA, AVISO)])
     if rojos:
         filas = [[h["titulo"], ETIQUETA[h["nivel"]]] + [h["detalle"]] for h in rojos[:12]]
         partes.append(inf.seccion("Lo primero que hay que mirar", inf.tabla(
@@ -934,6 +1019,10 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
 
     for clave, titulo in FAMILIAS:
         lista = datos["por_familia"].get(clave) or []
+        if familia_f and clave != familia_f:
+            continue
+        if nivel_f:
+            lista = [h for h in lista if h["nivel"] == nivel_f]
         if not lista:
             continue
         pendientes = [h for h in lista if h["nivel"] != OK]
@@ -945,7 +1034,8 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
         "Cada análisis comprueba una cosa concreta sobre los apuntes y la clasifica en cuatro "
         "niveles: rojo (hay que actuar), naranja (hay que revisarlo), verde (correcto) y gris "
         "(los apuntes no traen el dato, y se dice cuál falta). Ninguna cifra está estimada: "
-        "cuando un análisis no se puede calcular, se declara en lugar de rellenarlo.")))
+        "cuando un análisis no se puede calcular, se declara en lugar de rellenarlo."
+        "<br><br><b>Umbrales aplicados:</b> " + _texto_umbrales(datos.get("umbrales") or {}))))
 
     return inf.envoltura(
         titulo=TITULO,
@@ -959,3 +1049,24 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
               "En verde": str(r["n_verde"]), "No evaluables": str(r["n_no_evaluable"]),
               "Líneas analizadas": f"{datos['n_lineas']:,}".replace(",", ".")},
     )
+
+
+def _titulo_familia(clave: str | None) -> str:
+    return next((t for c, t in FAMILIAS if c == clave), str(clave or ""))
+
+
+def _texto_umbrales(tabla: dict[str, Any]) -> str:
+    """Los umbrales en una línea, en el mismo orden en que se declaran arriba."""
+    trozos = []
+    for v in tabla.values():
+        valor = v.get("valor")
+        if isinstance(valor, dict):
+            texto = ", ".join(f"{k}: {fmt(x)}" for k, x in valor.items())
+        elif v.get("unidad") == "%":
+            texto = fmt_pct(float(valor))
+        elif v.get("unidad") == "tanto por uno":
+            texto = fmt_pct(float(valor) * 100)
+        else:
+            texto = f"{valor} {v.get('unidad', '')}".strip()
+        trozos.append(f"{v.get('para', '')} → {texto}")
+    return "; ".join(trozos)

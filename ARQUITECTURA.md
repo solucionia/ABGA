@@ -5,7 +5,7 @@ Documento de trabajo técnico. Dice **qué hay hoy**, **qué se ha medido**, **h
 impresiones. Se lee junto al `README.md` (que explica el producto) y a
 `backend/CONTRATO-MODULOS.md` (que explica cómo se añade un informe).
 
-Última revisión: **Fase 0 cerrada** (red de seguridad: pruebas, tipos, estilo y CI).
+Última revisión: **Fases 0 a 4 y 6 hechas** (Fase 5, el frontal, aplazada a propósito).
 
 ---
 
@@ -348,6 +348,49 @@ otra. Ahora:
 
 
 
+**Fase 6 — el catálogo de análisis, del informe a la cartera (hecho y medido, 27/09/2026)**
+
+La mitad «declarativa» de la Fase 6 **ya estaba** en `app/modulos/analisis.py`: 32 comprobaciones
+declaradas como datos (`id`, familia, título, qué comprueba, cómo se calcula, función evaluadora), en
+cuatro niveles de semáforo, con los fallos de una regla aislados de las demás y los umbrales en
+constantes del principio del fichero. Lo que faltaba era la **capa de producto** alrededor:
+
+- **`GET /api/analisis?cod_empresa&year[&familia][&nivel]`**: el semáforo en JSON y **sin el HTML** del
+  informe, que es lo que necesita una pantalla con 32 fichas. Las familias y los niveles válidos los
+  declara el propio módulo (`FAMILIAS`, `NIVELES`): un filtro inventado es un 400 con la lista de los
+  que valen, no un resultado vacío.
+- **Los filtros ahora filtran de verdad.** `familia` estaba declarado en `PARAMETROS`… y no se usaba en
+  ninguna parte: el portal podía pedir `familia=financiero` y recibir las 32 comprobaciones igual.
+  Ahora el resultado trae `seleccion` (lo que pasa el filtro), `filtro` (qué se aplicó y cuántas
+  quedaron fuera) y el **resumen intacto**: el semáforo cuenta siempre todas las comprobaciones, si se
+  recortara con el filtro estaría mintiendo.
+- **`data.umbrales`**: los umbrales aplicados con su unidad y para qué son (347, concentración,
+  antigüedad, endeudamiento, tipo del Impuesto de Sociedades, límites de auditoría). Cambiar un criterio
+  es cambiar una constante de arriba, y el informe dice cuál se aplicó en vez de esconderlo en el código.
+- **`GET /api/interno/cartera?year&limite&desde`** (sólo rol interno): la vista que convierte el
+  despacho en asesoría — qué clientes tienen el semáforo en rojo, por cuánto y por qué, ordenados por
+  gravedad. Con 391 clientes eso sólo es posible con dos decisiones: **no se le pide nada al ERP** (sólo
+  se miran los ejercicios ya cargados; con el ERP en medio serían horas y un 429) y **se hace por
+  tandas** (`limite`/`desde`, con `pendientes` declarado). Un cliente sin el ejercicio cargado se cuenta
+  en `sin_el_ejercicio`/`sin_datos`, no se rellena.
+- **`servicio.ejecutar_solo_cache(...)`**: el camino sin ERP, explícito en el código. Si un ejercicio no
+  está en la caché, sale en `meta.faltantes` y en los avisos («no se han pedido al ERP estos
+  ejercicios…»), para que un ejercicio sin cargar no se confunda con un ejercicio sin contabilidad.
+- **Aviso `analisis_rojo`**: el contrato de módulos gana un hook opcional (`avisos_de_datos(datos)`) y
+  `analisis` lo usa para que un rojo quede apuntado en la tabla de avisos —agrupado por empresa y
+  ejercicio, como los demás— sin que el servicio tenga que conocer sus reglas. Sin esto, un rojo sólo
+  existe si alguien abre el informe.
+
+**Hallazgo de la Fase 6** (lo destapó la cartera, no una auditoría): con un ejercicio **sin apuntes**, 12
+comprobaciones salían en **verde**. Varias reglas buscan ausencias («no hay facturas repetidas», «sin
+saldos con socios», «sin deudas con Hacienda»), y no encontrar nada es correcto en un ejercicio con
+datos… pero decir «todo bien» de un ejercicio del que no se sabe nada es justo lo que la casa no hace.
+Ahora, sin apuntes, todas las comprobaciones salen en gris con el motivo. Está fijado en una prueba.
+
+**Pendiente de la Fase 6**: umbrales **por cliente** (hoy son constantes del módulo: un cliente con
+actividad estacional no se mide igual que uno industrial), acercarse a los ~50 análisis (hay 32), dar
+destino a los avisos (correo o Teams, en `app/alertas.py`) y el frontal que pinte el semáforo (Fase 5).
+
 ## 5. Plan por fases (el orden es por riesgo, no por vistosidad)
 
 | Fase | Trabajo | Por qué antes que lo siguiente | Tamaño |
@@ -358,7 +401,7 @@ otra. Ahora:
 | **3** ✅ | Datos y continuidad: migraciones con alembic ✅, copia de seguridad del PostgreSQL de Coolify **con restauración probada** ✅, entorno de previsualización con `APICON_SOLO_CACHE=1` ✅ (y producción leyendo el ERP) | Un fallo de datos del cliente no se arregla con código | hecho |
 | **4** ✅ | Observabilidad: identificador de petición (`X-Request-ID`) en las respuestas, en las líneas de registro y en `ejecuciones`; `LOG_FORMATO=json`; `GET /api/interno/metricas`; tabla `avisos` con `cobertura_parcial`/`error_calculo`/`error_erp`, agrupando repetidos y con `/api/salud` publicando los pendientes | Hace visibles los fallos que hoy sólo se ven si alguien mira | hecho |
 | **5** | Frontend: partir `app.js` en módulos ES y probar las funciones puras (sin framework); valorar Vite+Vue/React **sólo** cuando lleguen los ~50 análisis con semáforo | El estado de la UI se complica de verdad ahí, no antes | 2 días |
-| **6** | Producto: catálogo de análisis declarativo (tabla de reglas → resultado con semáforo) sobre el registro de módulos actual | Es el salto a «plataforma de asesoría» que pidió ABGA, y encaja sin tocar el borde | según alcance |
+| **6** ✅ | Producto: el catálogo declarativo de análisis (32 reglas, ya existía) **más** su capa de producto: `GET /api/analisis` con filtros y umbrales, `GET /api/interno/cartera` (semáforo de todos los clientes, sólo caché), aviso `analisis_rojo` y camino sin ERP (`ejecutar_solo_cache`) | Es el salto a «plataforma de asesoría» que pidió ABGA, y encaja sin tocar el borde | hecho (queda: umbrales por cliente y acercarse a los ~50 análisis) |
 
 **Lo que no se va a hacer** (y por qué): microservicios, colas o Kubernetes (un contenedor y un
 PostgreSQL son lo correcto para este tamaño y este equipo); ORM completo sobre el SQL actual (es

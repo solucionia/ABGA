@@ -232,6 +232,28 @@ def test_salud_responde_sin_sesion(portal: Portal) -> None:
     assert {m["nombre"] for m in cuerpo["modulos"]} >= {"pyg", "dashboard"}
 
 
+def test_el_latido_dice_en_que_motor_esta_la_cache(portal: Portal,
+                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """En producción la caché está en PostgreSQL: decir «abga.sqlite3» confunde en un incidente.
+
+    El motor se deduce de `DATABASE_URL` (lo mismo que decide dónde se escribe), así que aquí se
+    comprueba con las dos URLs sin levantar ningún PostgreSQL.
+    """
+    from app import bd
+    from app.aplicacion import catalogo
+    from app.config import cargar_config
+
+    local = portal.api.get("/api/salud").json()["cache"]
+    assert local["motor"] == "sqlite" and local["ubicacion"].endswith(".sqlite3")
+
+    # El caso de producción, sin levantar un PostgreSQL: lo único que decide el motor es
+    # `bd.es_postgres()` (que sale de DATABASE_URL).
+    monkeypatch.setattr(bd, "es_postgres", lambda: True)
+    nube = catalogo.diagnostico_cache(cargar_config())
+    assert nube["motor"] == "postgresql" and "postgres" in nube["ubicacion"].lower()
+    assert nube["ttl_apuntes"] == local["ttl_apuntes"]
+
+
 @pytest.mark.parametrize("year_malo", ["dos-mil-veinticinco", "2025-2026", "", None, 1999])
 def test_un_anio_invalido_se_rechaza_con_422(portal: Portal, year_malo) -> None:
     """Antes reventaba con 500 (`int("dos-mil")`). El formato lo valida el esquema, no el código."""

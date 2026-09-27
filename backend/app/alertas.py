@@ -28,6 +28,7 @@ TIPOS = (
     "cobertura_parcial",   # el informe salió, pero no con todo el ejercicio leído
     "error_calculo",       # fallo de la plataforma calculando el informe
     "error_erp",           # el ERP no respondió o respondió mal
+    "analisis_rojo",       # el semáforo de análisis salió con comprobaciones en rojo
 )
 
 COLUMNAS = ("tipo", "cod_empresa", "ejercicio", "modulo", "detalle", "origen", "email",

@@ -13,6 +13,7 @@ from ..dependencias import empresa_permitida, usuario_actual
 from ..esquemas import (
     PeticionInforme,
     PeticionRefrescar,
+    RespuestaAnalisis,
     RespuestaDashboard,
     RespuestaError,
     RespuestaInforme,
@@ -39,6 +40,24 @@ def dashboard(cod_empresa: str = Query(...), year: int = Query(..., ge=2000, le=
     cod = empresa_permitida(us, cod_empresa)
     r = casos.dashboard(cod, year, forzar=forzar, es_interno=casos_sesion.es_interno(us))
     return RespuestaDashboard(data=r["data"], meta=r["meta"], avisos=r.get("avisos") or [])
+
+
+@router.get("/analisis", response_model=RespuestaAnalisis, responses=ERRORES,
+            summary="Semáforo de análisis y alertas (JSON, sin el HTML del informe)")
+def analisis(cod_empresa: str = Query(...), year: int = Query(..., ge=2000, le=2100),
+             familia: str | None = Query(None, description="Recorta a una familia de análisis"),
+             nivel: str | None = Query(None, description="Recorta a un nivel del semáforo"),
+             us: dict[str, Any] = Depends(usuario_actual)) -> RespuestaAnalisis:
+    """El catálogo de comprobaciones con su semáforo, en JSON, para pintar una pantalla.
+
+    `data.hallazgos` trae todas las comprobaciones y `data.seleccion` las que pasan el filtro: el
+    resumen (`data.resumen`) cuenta siempre todas, para que el semáforo no se recorte con el filtro.
+    """
+    cod = empresa_permitida(us, cod_empresa)
+    r = casos.analisis(cod, year, familia=familia, nivel=nivel, email=us["email"],
+                       es_interno=casos_sesion.es_interno(us))
+    return RespuestaAnalisis(**{k: v for k, v in r.como_json().items()
+                                if k in RespuestaAnalisis.model_fields})
 
 
 @router.post("/informe", response_model=RespuestaInforme, responses=ERRORES,

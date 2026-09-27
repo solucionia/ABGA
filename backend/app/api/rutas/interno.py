@@ -27,6 +27,7 @@ from ..esquemas import (
     RespuestaAvisoAtendido,
     RespuestaAvisos,
     RespuestaCacheBorrada,
+    RespuestaCartera,
     RespuestaEliminado,
     RespuestaEmpresaCreada,
     RespuestaEmpresasBuscadas,
@@ -128,6 +129,20 @@ def metricas(dias: int = Query(7, ge=1, le=365),
     Todo sale de la tabla `ejecuciones` que ya se escribía; lo que faltaba era mirarla de frente.
     """
     return RespuestaMetricas(**catalogo.metricas(dias=dias))
+
+
+@router.get("/cartera", response_model=RespuestaCartera, responses=ERRORES,
+            summary="Cartera de análisis de todos los clientes (Fase 6)")
+def cartera(year: int = Query(..., ge=2000, le=2100), limite: int = Query(30, ge=1, le=200),
+            desde: int = Query(0, ge=0),
+            us: dict[str, Any] = Depends(usuario_interno)) -> RespuestaCartera:
+    """Qué clientes tienen el semáforo en rojo, de un vistazo y sin tocar el ERP.
+
+    Sólo entran los clientes cuyo ejercicio ya está cargado en la caché: la consulta no pide nada al
+    ERP (con 391 clientes serían horas y un 429). La respuesta dice cuántas empresas hay en cada
+    situación, cuántas quedan por recorrer (`pendientes`) y cuántas no tienen el ejercicio cargado.
+    """
+    return RespuestaCartera(**catalogo.cartera(year=year, limite=limite, desde=desde))
 
 
 @router.get("/avisos", response_model=RespuestaAvisos, responses=ERRORES,
