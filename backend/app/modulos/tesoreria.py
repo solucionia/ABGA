@@ -9,12 +9,23 @@ la antigüedad se cuenta desde la fecha del apunte y el informe lo dice expresam
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 from .. import informes as inf
-from ..ledger import (Linea, MESES, fecha_a_int, fmt, fmt_pct, mes_de, nombre_tercero, num,
-                      por_mes, saldos_por_cuenta, suma_acreedor, suma_deudor)
+from ..ledger import (
+    MESES,
+    Linea,
+    fecha_a_int,
+    fmt,
+    fmt_pct,
+    mes_de,
+    nombre_tercero,
+    num,
+    saldos_por_cuenta,
+    suma_acreedor,
+    suma_deudor,
+)
 
 NOMBRE = "tesoreria"
 TITULO = "Tesorería y cobros"
@@ -98,7 +109,7 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str,
     cuentas.sort(key=lambda c: -abs(c["saldo"]))
     tesoreria_total = round(sum(c["saldo"] for c in cuentas), 2)
 
-    movimiento_mes = {m: 0.0 for m in range(1, 13)}
+    movimiento_mes = dict.fromkeys(range(1, 13), 0.0)
     for l in lineas:
         if any(l.cuenta.startswith(p) for p in P_TESORERIA):
             m = mes_de(l.fecha)
@@ -117,17 +128,16 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict[str, Any]) -> dict[str,
     pagos = [p for p in pagos if p["saldo"] > 0.5]
 
     # ---------- periodos medios ----------
-    ingresos = suma_acreedor(saldos, [p for p in ("700", "701", "702", "703", "704", "705",
-                                                  "706", "708", "709", "74", "75", "778")])
-    compras = suma_deudor(saldos, [p for p in ("600", "601", "602", "607", "608", "609", "610",
-                                               "611", "612", "62", "63")])
+    ingresos = suma_acreedor(saldos, ["700", "701", "702", "703", "704", "705",
+                                                  "706", "708", "709", "74", "75", "778"])
+    compras = suma_deudor(saldos, ["600", "601", "602", "607", "608", "609", "610",
+                                               "611", "612", "62", "63"])
     saldo_clientes = round(sum(c["saldo"] for c in cobros), 2)
     saldo_proveedores = round(sum(p["saldo"] for p in pagos), 2)
     pmc = round(saldo_clientes / ingresos * 365) if ingresos else None
     pmp = round(saldo_proveedores / compras * 365) if compras else None
 
     # ---------- previsión a 3 meses con el flujo medio observado ----------
-    meses_con_datos = [m["flujo"] for m in mensual if m["flujo"]]
     ultimos = [m["flujo"] for m in mensual[-3:] if m["flujo"]]
     flujo_medio = round(sum(ultimos) / len(ultimos), 2) if ultimos else 0.0
     prevision = []

@@ -42,8 +42,9 @@ from __future__ import annotations
 import datetime as dt
 from bisect import bisect_right
 from collections import Counter, defaultdict
+from collections.abc import Callable, Hashable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Hashable, Iterable, Iterator, Sequence
+from typing import Any
 
 from .. import informes as inf
 from ..ledger import Linea, fmt, num
@@ -80,7 +81,7 @@ PESO_PROVEEDOR = 2
 PESO_CLIENTE = 2
 
 CRITERIOS: list[tuple[str, str, int]] = [
-    ("importe", f"Importe idéntico (±0,02 €)", PESO_IMPORTE),
+    ("importe", "Importe idéntico (±0,02 €)", PESO_IMPORTE),
     ("cuentas", "Mismo conjunto de cuentas (4 dígitos)", PESO_CUENTAS),
     ("fecha", "Misma fecha", PESO_MISMA_FECHA),
     ("fecha_proxima", "Fecha próxima (± días)", PESO_FECHA_PROXIMA),
@@ -168,7 +169,7 @@ def asientos_de_lineas(lineas: Iterable[Linea]) -> list[Asiento]:
         grupos[clave].append(linea)
 
     salida: list[Asiento] = []
-    for clave, miembros in grupos.items():
+    for miembros in grupos.values():
         primero = miembros[0]
         crudo_primero = getattr(primero, "crudo", None) or {}
         serie = _texto(primero, "serie") or _texto(crudo_primero, "Serie")
@@ -592,8 +593,9 @@ def _tabla_duplicados(duplicados: Sequence[dict[str, Any]]) -> str:
     filas = []
     for d in duplicados:
         color = COLOR_NIVEL[d["nivel"]]
-        quien = lambda x: (f'<b>{inf.esc(x["id"])}</b><br>'
-                           f'<span style="color:#5b6b80">{inf.esc(x["fechaTexto"])}</span>')
+        def quien(x):
+            return (f'<b>{inf.esc(x["id"])}</b><br>'
+                                   f'<span style="color:#5b6b80">{inf.esc(x["fechaTexto"])}</span>')
         filas.append([
             f'<span style="background:{color};color:#fff;font-size:10.5px;padding:1px 6px;'
             f'border-radius:3px;white-space:nowrap">{d["nivel"]}</span>'

@@ -23,7 +23,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import modulos                        # noqa: E402
+from app import modulos  # noqa: E402
 from app.ledger import fmt, fmt_pct, lineas_de_asientos  # noqa: E402
 
 TOLERANCIA = 0.05          # el módulo redondea a céntimos

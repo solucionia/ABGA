@@ -30,6 +30,9 @@ class Resultado:
     meta: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
     avisos: list[str] = field(default_factory=list)
+    # Causa del fallo, para que la capa HTTP elija el código sin adivinar por el texto del mensaje:
+    # "erp" (el ERP no responde o limita) → 502 · "no_disponible" → 404 · "calculo" → 400.
+    tipo: str | None = None
 
     def como_json(self) -> dict[str, Any]:
         salida: dict[str, Any] = {"status": self.status, "meta": self.meta}
@@ -133,7 +136,8 @@ def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[st
         db.registrar_ejecucion(cod_empresa=cod_empresa, ejercicio=year, modulos=nombre_modulo,
                                origen=origen, email=email, segundos=time.perf_counter() - inicio,
                                estado="error", desde_cache=False, detalle=msg)
-        return Resultado(status="error", error=msg, meta={"modulo": nombre_modulo})
+        return Resultado(status="error", error=msg, meta={"modulo": nombre_modulo},
+                         tipo="no_disponible")
 
     ctx = _contexto(definicion, cod_empresa=cod_empresa, year=year, params=params or {})
     try:
@@ -152,14 +156,15 @@ def ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[st
                                origen=origen, email=email, segundos=segundos, estado="error_erp",
                                desde_cache=False, detalle=str(e))
         log.warning("error del ERP en %s/%s: %s", cod_empresa, nombre_modulo, e)
-        return Resultado(status="error", error=str(e), meta={"modulo": nombre_modulo, "segundos": round(segundos, 2)})
+        return Resultado(status="error", error=str(e), tipo="erp",
+                         meta={"modulo": nombre_modulo, "segundos": round(segundos, 2)})
     except Exception as e:  # cualquier fallo de cálculo se registra y se devuelve controlado
         segundos = time.perf_counter() - inicio
         log.exception("fallo calculando %s/%s", cod_empresa, nombre_modulo)
         db.registrar_ejecucion(cod_empresa=cod_empresa, ejercicio=year, modulos=nombre_modulo,
                                origen=origen, email=email, segundos=segundos, estado="error_calculo",
                                desde_cache=False, detalle=f"{type(e).__name__}: {e}")
-        return Resultado(status="error", error=f"No se pudo generar el informe: {e}",
+        return Resultado(status="error", error=f"No se pudo generar el informe: {e}", tipo="calculo",
                          meta={"modulo": nombre_modulo, "segundos": round(segundos, 2)})
 
     segundos = time.perf_counter() - inicio

@@ -106,7 +106,7 @@ def main() -> None:
     if guardado:
         tengo = {clave(a) for a in guardado["asientos"]}
         solo_paginas = claves_pagina - tengo
-        print(f"\n=== 5. comparación con la caché ===")
+        print("\n=== 5. comparación con la caché ===")
         print(f"   en caché: {len(tengo)} asientos")
         print(f"   en el recorrido por páginas y no en caché: {len(solo_paginas)}")
         for k in list(solo_paginas)[:8]:

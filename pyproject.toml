@@ -1,0 +1,95 @@
+# Configuración del proyecto y de las herramientas (ruff, mypy, pytest).
+#
+# Las dependencias de EJECUCIÓN no se declaran aquí a propósito: la imagen de producción instala
+# `backend/requirements.txt`, y tenerlas en dos sitios garantiza que se desincronicen. Las de
+# desarrollo están en `backend/requirements-dev.txt`.
+#
+# Un solo comando para todo: `make` (ver Makefile).
+
+[project]
+name = "abga-plataforma"
+version = "1.0.0"
+description = "Plataforma de informes financieros de ABGA Consultores sobre el ERP apiCON"
+requires-python = ">=3.11"
+dependencies = []
+
+# ---------------------------------------------------------------- ruff (estilo y errores)
+
+[tool.ruff]
+target-version = "py311"
+# 110 y no 88: el código venía de 100-110 y las cadenas de HTML/CSS son largas por naturaleza.
+line-length = 110
+extend-exclude = [".venv", "_revisar_ABGA", "legacy"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # errores de estilo
+    "F",   # errores lógicos (imports sin usar, variables sin definir…)
+    "W",   # avisos
+    "I",   # orden de los imports
+    "UP",  # sintaxis obsoleta para la versión de Python objetivo
+    "B",   # bugs comunes (B: bugbear)
+    "C4",  # comprehensions
+    "SIM", # simplificaciones
+]
+ignore = [
+    # FastAPI: `Depends()`, `Query()` y `Body()` son llamadas en el valor por defecto del
+    # parámetro; no es el defecto que la regla persigue.
+    "B008",
+    # Plantillas HTML/CSS dentro de cadenas (informes.py y los módulos): no se reformatean a mano.
+    "E501",
+    # `l` como abreviatura de "línea" en el código heredado de n8n. Prohibido en código nuevo;
+    # la limpieza va con el tipado del dominio (Fase 1).
+    "E741",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# Los verificadores heredados calculan valores que ya no se comparan con nada (F841): son cinco
+# comprobaciones que dejaron de ejecutarse sin que nadie se enterara (ver ARQUITECTURA.md, Fase 1).
+# Se dejan a la vista en lugar de borrarlas en silencio, y no bloquean la CI mientras se reescriben
+# con asserts de pytest.
+"backend/scripts/verificar_*.py" = ["F841"]
+
+# ---------------------------------------------------------------- mypy (tipos)
+
+[tool.mypy]
+python_version = "3.11"
+files = ["backend/app", "backend/tests"]
+mypy_path = "backend"
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+
+# RATCHET DE TIPOS. Estos módulos todavía calculan sobre `dict`/`object` sin tipar (vienen de los
+# nodos Code de n8n). mypy los revisa pero no bloquea la CI mientras el dominio no tenga tipos:
+# el objetivo de la Fase 1 es ir vaciando esta lista, y un módulo que salga de ella no vuelve a
+# entrar. Mientras estén aquí, un error nuevo en ellos NO rompe la CI: es una limitación conocida
+# y consciente, no un olvido.
+[[tool.mypy.overrides]]
+module = ["app.modulos.*"]
+ignore_errors = true
+
+# ---------------------------------------------------------------- pytest
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+addopts = "--strict-markers --strict-config -ra"
+markers = [
+    "datos_reales: necesita los fixtures reales del ERP (fuera de git); sin ellos se omite",
+    "lento: ejecuta los verificadores completos (minutos)",
+]
+
+# ---------------------------------------------------------------- cobertura
+
+[tool.coverage.run]
+source = ["backend/app"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

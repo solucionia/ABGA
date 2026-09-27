@@ -53,18 +53,17 @@ Defectos del sistema anterior encontrados al portarlo (todos corregidos aquí):
 ## Puesta en marcha
 
 ```bash
-cd backend
-python3 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
+make instalar     # crea .venv e instala las dependencias de desarrollo
 
 # credenciales del ERP (nunca a git): .env con APICON_USERNAME, APICON_PASSWORD,
 # APICON_CLIENT_ID, APICON_CLIENT_SECRET, APICON_EMPRESA_DEFECTO y SECRET_KEY
 
-./.venv/bin/python scripts/init_db.py          # empresas y usuarios iniciales
-./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+./.venv/bin/python backend/scripts/init_db.py          # empresas y usuarios iniciales
+cd backend && ../.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Portal en `http://localhost:8000`. Documentación interactiva de la API en `/docs`.
+Arquitectura, deuda declarada y plan por fases: `ARQUITECTURA.md`.
 
 ## Módulos de informe
 
@@ -84,27 +83,54 @@ Contrato para añadir uno nuevo: `backend/CONTRATO-MODULOS.md`.
 
 ## API
 
+Todo el contrato está tipado con Pydantic y publicado en `/docs` (**33 esquemas**): el año fuera de
+rango o no numérico responde **422** diciendo qué campo falla, y un campo de más también es error.
+
 | Método | Ruta | Qué hace |
 |---|---|---|
-| POST | `/api/login` · `/api/logout` | sesión (token firmado, cookie httpOnly) |
-| GET | `/api/yo` · `/api/empresas` · `/api/modulos` | contexto del usuario |
+| POST | `/api/login` · `/api/logout` · `/api/registro` | sesión (token firmado, cookie httpOnly) y alta del cliente con el PIN de la asesoría |
+| GET | `/api/yo` · `/api/empresas` · `/api/modulos` · `/api/ejercicios` | contexto del usuario |
 | GET | `/api/dashboard?cod_empresa&year` | KPIs y series en JSON agregado (~9 KB, no los apuntes) |
 | POST | `/api/informe` | genera un informe y devuelve `{status, html, data, meta, avisos}` |
+| POST | `/api/informe/exportar` | descarga las tablas del informe (CSV o ZIP) para Excel |
 | POST | `/api/refrescar` · GET `/api/trabajos/{id}` | releer del ERP en segundo plano, con progreso |
 | GET | `/api/interno/resumen` | panel de ABGA: ejecuciones, caché, módulos, usuarios |
-| POST | `/api/interno/cache` · `/usuarios` · `/empresas` | administración (sólo rol interno) |
+| POST | `/api/interno/cache` · `/usuarios` · `/empresas` · `/pin` | administración (sólo rol interno) |
 | GET | `/api/salud` · `/api/cache` | diagnóstico |
 
 El contrato de siempre se respeta: `{status:"ok", html:"<div…>", data:{…}}`, así que el HTML se
-puede seguir imprimiendo o incrustar.
+puede seguir imprimiendo o incrustar. **Los errores hablan todos el mismo idioma**:
+`{"status":"error","error":"…","codigo":"…"}` (con `detalle` cuando es una validación), incluidos
+los 404 de ruta.
+
+## Cómo está organizado el backend
+
+```
+app/main.py        composición: routers, manejadores de error y estáticos (74 líneas)
+app/api/           endpoints (rutas/), contratos (esquemas.py), permisos (dependencias.py)
+app/aplicacion/    casos de uso: sesión, usuarios, informes, catálogo
+app/servicio.py    orquesta el cálculo: coger años → calcular → maquetar → registrar
+app/ledger.py  app/informes.py  app/modulos/    el dominio: contabilidad y maquetación
+app/apicon.py bd.py cache.py db.py auth.py trabajos.py config.py   infraestructura
+```
+
+La regla (`api → aplicacion → dominio`) **la comprueba la suite**, no la buena voluntad:
+`backend/tests/test_arquitectura.py` lee los `import` reales y falla si la capa HTTP toca la base de
+datos, si el dominio importa infraestructura o si la aplicación depende de HTTP. Detalles y plan por
+fases en `ARQUITECTURA.md`.
 
 ## Datos y caché
 
 - Caché de apuntes por empresa y ejercicio, con TTL de 12 h. El motor lo elige `DATABASE_URL`:
   SQLite (`data/abga.sqlite3`) en local y **PostgreSQL** en producción (Coolify). El mismo SQL
   vale para los dos: la traducción vive sólo en `app/bd.py`
-  (`./.venv/bin/python backend/scripts/verificar_bd.py` ejecuta el mismo recorrido en los dos
-  motores y compara los resultados).
+  (`./.venv/bin/python backend/scripts/verificar_bd.py` ejecuta el mismo recorrido —esquema,
+  usuarios, apuntes, tokens, ejecuciones, **intentos de acceso y trabajos**— en los dos motores y
+  compara los resultados uno a uno).
+- **El estado que sobrevive al proceso vive en la base**, no en memoria: los intentos de acceso
+  (límite de contraseña y de PIN) y los trabajos en segundo plano. Los trabajos corren en hilos de
+  este proceso, así que la plataforma se declara de **un solo proceso**: `arranque.py` no arranca
+  con `WEB_CONCURRENCY > 1` y lo explica, y `/api/salud` lo publica.
 - Cobertura verificada: si el recorrido no alcanza `ResultadosTotales`, el meta del informe lo
   dice (`"cobertura": "parcial (n de m)")` y queda en el log.
 - `scripts/precalentar.py` deja los ejercicios listos; pensado para un cronjob nocturno de Hermes.
@@ -112,13 +138,54 @@ puede seguir imprimiendo o incrustar.
 - `scripts/probe_*.py` son las sondas con las que se descubrió el comportamiento del ERP
   (paginación, límites, 429). No hacen falta en producción.
 
-## Pruebas
+## Copias de seguridad
+
+La copia la programa **Coolify** en el recurso de la base de datos (pestaña *Backups*): `pg_dump`
+en formato custom, guardada en el servidor con retención, y opcionalmente subida a un
+S3-compatible. Pero una copia no es una prueba de restauración, así que la comprobación que hay que
+pasar cada cierto tiempo es ésta:
 
 ```bash
-./.venv/bin/python backend/scripts/verificar_nucleo.py    # integridad contable y maquetación
-./.venv/bin/python backend/scripts/verificar_modulos.py   # todos los módulos contra datos reales
-./.venv/bin/python backend/scripts/e2e_api.py http://127.0.0.1:8000   # API, permisos y avisos
+./.venv/bin/python backend/scripts/verificar_copia.py --copia /ruta/copia.dump
+# la restaura en un PostgreSQL desechable y lee los datos con el propio código de la plataforma
 ```
+
+Su propia prueba está en `backend/tests/test_copia.py` (marcada `lento`, necesita `pgserver`).
+Detalles y decisiones pendientes: `ARQUITECTURA.md`, Fase 3.
+
+## Pruebas
+
+Un solo comando, sin recordar nombres de script:
+
+```bash
+make pruebas     # toda la suite (omite lo que necesita los fixtures si no están)
+make rapido      # sólo lo que no depende de datos reales: es lo que corre la CI
+make reales      # lo que sí depende de los fixtures del ERP
+make lento       # los verificadores heredados, completos
+make verificar   # lint + tipos + toda la suite
+```
+
+Lo que la suite deja claro desde el primer día:
+
+- **No necesita secretos ni datos del cliente.** Fabrica su propio `.env` con credenciales
+  ficticias y una base de datos temporal; el ERP está simulado (`tests/conftest.py`), así que
+  ninguna prueba sale a la red ni escribe en el entorno de desarrollo.
+- **El dominio se prueba con datos sintéticos propios** (`tests/sintetico.py`: un ejercicio
+  contable completo — apertura, venta con IVA, compra, nómina, retención y cierre — que cuadra al
+  céntimo). Es lo que permite comprobar la aritmética del balance y del PyG en la CI, sin datos de
+  nadie.
+- **Lo que necesita los datos reales se marca** con `@pytest.mark.datos_reales` y se omite solo
+  cuando no están.
+- Los verificadores de `backend/scripts/verificar_*.py` siguen ahí y la suite los ejecuta: los
+  verdes, como prueba de regresión; los tres con expectativas caducadas, como `xfail` con el
+  motivo escrito.
+
+```bash
+./.venv/bin/python -m pytest -m datos_reales -k modulos   # un módulo concreto
+./.venv/bin/python -m pytest -k "cache or permisos" -v   # por nombre de prueba
+```
+
+Criterios de decisión y plan por fases: **`ARQUITECTURA.md`**.
 
 Los fixtures de `fixtures/` son respuestas reales del ERP (empresa 6091) y están fuera de git.
 

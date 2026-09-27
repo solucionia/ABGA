@@ -25,7 +25,14 @@ RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
 from app import modulos  # noqa: E402
-from app.ledger import comprobar_cuadre, fmt, lineas_de_asientos, saldos_por_cuenta, suma_acreedor, suma_deudor  # noqa: E402
+from app.ledger import (  # noqa: E402
+    comprobar_cuadre,
+    fmt,
+    lineas_de_asientos,
+    saldos_por_cuenta,
+    suma_acreedor,
+    suma_deudor,
+)
 
 ANCHO = 78
 fallos: list[str] = []
@@ -112,8 +119,8 @@ def main() -> int:
               str([f["year"] for f in datos["noReales"]]))
     comprobar(all(f["estado"] == "repetido" and f["repiteDe"] == 2024 for f in datos["noReales"]),
               "2023/2022/2021 detectados como repetición de 2024")
-    comprobar(datos["etiquetas"] == ["2021*", "2022*", "2023*", "2024", "2025"],
-              "etiquetas de columna con asterisco en los años repetidos",
+    comprobar(datos["etiquetas"] == ["2025", "2024", "2023*", "2022*", "2021*"],
+              "etiquetas de columna con asterisco en los años repetidos (del más nuevo al más antiguo)",
               str(datos["etiquetas"]))
     comprobar(any("auditados" in a for a in datos["avisos"]),
               "avisos: aviso explícito de años repetidos")
@@ -170,8 +177,15 @@ def main() -> int:
         pct = f'{f["pctActual"]:.1f}%' if f["pctActual"] is not None else "—"
         print(f'    {f["desc"]:<42}{fmt(signo * f["actual"]):>16}{pct:>10}'
               f'{fmt(signo * f["anterior"]):>16}{var:>12}')
-    comprobar(abs(datos["pyg"][-3]["actual"] - a["resultado"]) < 0.01,
-              "la fila RESULTADO DEL EJERCICIO coincide con la magnitud calculada")
+    # La fila se busca por su nombre, no por su posición: el cuadro ha ganado filas (el impuesto y
+    # el cash-flow) y `pyg[-3]` dejó de ser el resultado sin que nadie se enterara.
+    fila_resultado = next((f for f in datos["pyg"] if "RESULTADO DEL EJERCICIO" in f["desc"].upper()),
+                          None)
+    comprobar(fila_resultado is not None
+              and abs(fila_resultado["actual"] - datos["actual"]["resultado"]) < 0.01,
+              "la fila RESULTADO DEL EJERCICIO coincide con la magnitud calculada",
+              f"{fila_resultado['actual'] if fila_resultado else '—'} frente a "
+              f"{datos['actual']['resultado']}")
 
     # -------------------------------------------------------------- 6. balance
     titulo("6. SECCIÓN 4 · BALANCE DE SITUACIÓN")
@@ -227,12 +241,16 @@ def main() -> int:
     for r in datos["ratios"]:
         vals = "".join(f"{v:>10.2f}" if r["formato"] == "num" else f"{v:>9.1f}%" for v in r["valores"])
         print(f'    {r["nombre"]:<26}{r["optimo"]:<14}{vals}')
+    # Los ratios del informe van redondeados (2-4 decimales), así que se comparan con ese margen y
+    # no con 1e-6: exigir precisión de máquina a un número ya redondeado hacía fallar el arnés.
     esperado_prueba = ((a["clientes"] + a["tesoreria"]) / a["pasC"]) if a["pasC"] else 0.0
-    comprobar(abs(datos["ratios"][0]["valores"][-1] - esperado_prueba) < 1e-6,
-              "prueba ácida = (clientes + tesorería) / pasivo corriente")
+    comprobar(abs(datos["ratios"][0]["valores"][-1] - esperado_prueba) < 0.005,
+              "prueba ácida = (clientes + tesorería) / pasivo corriente",
+              f"{datos['ratios'][0]['valores'][-1]} frente a {esperado_prueba:.6f}")
     esperado_endeud = a["recursosAjenos"] / a["totalActivo"] * 100 if a["totalActivo"] else 0.0
-    comprobar(abs(datos["ratios"][2]["valores"][-1] - esperado_endeud) < 1e-6,
-              "endeudamiento = recursos ajenos / activo total")
+    comprobar(abs(datos["ratios"][2]["valores"][-1] - esperado_endeud) < 0.05,
+              "endeudamiento = recursos ajenos / activo total",
+              f"{datos['ratios'][2]['valores'][-1]} frente a {esperado_endeud:.6f}")
 
     # -------------------------------------------------------------- 11. HTML
     titulo("11. HTML DEL INFORME (secciones 1-10)")

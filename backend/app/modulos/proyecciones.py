@@ -49,14 +49,36 @@ proyección cuadre con el PyG del portal.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (MESES, a_float, comprobar_cuadre, fmt, fmt_pct, mes_de, num,
-                      por_mes, saldos_por_cuenta, suma_acreedor, suma_deudor)
-from .pyg import (P_AMORTIZACIONES, P_APROVISIONAMIENTOS, P_DEUDORES,
-                  P_GASTOS_FINANCIEROS, P_IMPUESTO, P_ING_FINANCIEROS, P_OTROS_GASTOS,
-                  P_OTROS_INGRESOS, P_PERSONAL, P_PROVEEDORES, P_TESORERIA, P_VENTAS)
+from ..ledger import (
+    MESES,
+    a_float,
+    comprobar_cuadre,
+    fmt,
+    fmt_pct,
+    num,
+    por_mes,
+    saldos_por_cuenta,
+    suma_acreedor,
+    suma_deudor,
+)
+from .pyg import (
+    P_AMORTIZACIONES,
+    P_APROVISIONAMIENTOS,
+    P_DEUDORES,
+    P_GASTOS_FINANCIEROS,
+    P_IMPUESTO,
+    P_ING_FINANCIEROS,
+    P_OTROS_GASTOS,
+    P_OTROS_INGRESOS,
+    P_PERSONAL,
+    P_PROVEEDORES,
+    P_TESORERIA,
+    P_VENTAS,
+)
 
 NOMBRE = "proyecciones"
 TITULO = "Proyecciones financieras"
@@ -115,10 +137,7 @@ def magnitudes(lineas: Sequence, previas: Sequence | None = None) -> dict[str, A
     cash_flow = resultado + amortizaciones
 
     d_previos: dict[str, float] = {}
-    if previas:
-        d_previos = magnitudes(previas) if not isinstance(previas, dict) else previas
-    else:
-        d_previos = {}
+    d_previos = (magnitudes(previas) if not isinstance(previas, dict) else previas) if previas else {}
     var_deudores = deudores - a_float(d_previos.get("deudores")) if d_previos else 0.0
     var_proveedores = proveedores - a_float(d_previos.get("proveedores")) if d_previos else 0.0
     flujo_operativo = cash_flow - var_deudores + var_proveedores
@@ -212,18 +231,18 @@ def regresion(puntos: Sequence[tuple[int, float]], *, pesos: Sequence[float] | N
     if len(ws) < len(validos):
         ws = ws + [float(len(validos))] * (len(validos) - len(ws))
     suma_w = sum(ws) or 1.0
-    media_x = sum(w * x for w, x in zip(ws, xs)) / suma_w
-    media_y = sum(w * y for w, y in zip(ws, ys)) / suma_w
-    num = sum(w * (x - media_x) * (y - media_y) for w, x, y in zip(ws, xs, ys))
-    den = sum(w * (x - media_x) ** 2 for w, x in zip(ws, xs))
+    media_x = sum(w * x for w, x in zip(ws, xs, strict=False)) / suma_w
+    media_y = sum(w * y for w, y in zip(ws, ys, strict=False)) / suma_w
+    num = sum(w * (x - media_x) * (y - media_y) for w, x, y in zip(ws, xs, ys, strict=False))
+    den = sum(w * (x - media_x) ** 2 for w, x in zip(ws, xs, strict=False))
     pendiente = num / den if den else 0.0
     intercepto = media_y - pendiente * media_x
     proyeccion_cruda = intercepto + pendiente * objetivo
     recortada = bool(no_negativa and proyeccion_cruda < 0)
     proyeccion = 0.0 if recortada else proyeccion_cruda
 
-    var_resid = sum(w * (y - (intercepto + pendiente * x)) ** 2 for w, x, y in zip(ws, xs, ys))
-    var_total = sum(w * (y - media_y) ** 2 for w, y in zip(ws, ys))
+    var_resid = sum(w * (y - (intercepto + pendiente * x)) ** 2 for w, x, y in zip(ws, xs, ys, strict=False))
+    var_total = sum(w * (y - media_y) ** 2 for w, y in zip(ws, ys, strict=False))
     r2 = 1 - var_resid / var_total if var_total else (1.0 if var_resid == 0 else 0.0)
 
     rel = pendiente / abs(media_y) if media_y else (1.0 if pendiente else 0.0)
@@ -924,14 +943,14 @@ def informe_html(datos: dict[str, Any], ctx: dict | None = None, *, empresa: str
                            f"{datos['aniosCompletosEstacionalidad']} ejercicio(s) con los 12 meses "
                            "observados; si no hay ninguno, se reparte a partes iguales.")
         + inf.seccion("7. Metodología y control", barra_tendencia
-                      + f'<div style="font-size:11.5px;color:#3c4a5c;padding:6px 2px">'
+                      + '<div style="font-size:11.5px;color:#3c4a5c;padding:6px 2px">'
                         "<b>Regresión:</b> mínimos cuadrados ponderados con pesos 1..n (el ejercicio "
                         "más reciente pesa más), evaluada en el año siguiente. "
                         "<b>Signos:</b> sin recortes a cero (sólo se acotan ventas, gastos, deudores "
                         "y acreedores, avisando si ocurre). "
                         "<b>Impuesto:</b> tipo nominal sobre RAI positivo, porque los ejercicios "
                         "cargados no traen la cuenta 630. "
-                        "<b>Caja:</b> resultado + amortización; " 
+                        "<b>Caja:</b> resultado + amortización; "
                       + ("la tesorería se reconstruye desde los saldos 57x." if datos["hayTesoreria"]
                          else "no hay saldos 57x en el ERP, así que no se reconstruye el saldo "
                               "bancario y se informa de la caja generada.")

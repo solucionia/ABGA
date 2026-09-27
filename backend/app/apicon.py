@@ -14,8 +14,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -101,7 +102,7 @@ class ClienteApicon:
     def token(self, empresa: str, forzar: bool = False) -> str:
         if not forzar:
             mem = self._tok_mem.get(empresa)
-            if mem and mem[1] > datetime.now(timezone.utc):
+            if mem and mem[1] > datetime.now(UTC):
                 return mem[0]
             en_cache = cache.leer_token(empresa)
             if en_cache:
@@ -129,7 +130,7 @@ class ClienteApicon:
             raise ErrorErp("El ERP no devolvió token de acceso.")
         segundos = int(j.get("expires_in") or 3600)
         # margen de 1 hora para no usar un token a punto de caducar
-        expira = datetime.now(timezone.utc) + timedelta(seconds=max(60, segundos - 3600))
+        expira = datetime.now(UTC) + timedelta(seconds=max(60, segundos - 3600))
         self._tok_mem[empresa] = (tok, expira)
         cache.guardar_token(empresa, tok, expira.isoformat(timespec="seconds"))
         log.info("token nuevo para %s (caduca en %ss)", empresa, segundos)

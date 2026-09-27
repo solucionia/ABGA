@@ -10,7 +10,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from . import db
@@ -78,8 +78,8 @@ def crear_token(email: str, rol: str, *, minutos: int | None = None) -> str:
     minutos = minutos or cfg.token_ttl_min
     payload = {
         "sub": email, "rol": rol,
-        "exp": int((datetime.now(timezone.utc) + timedelta(minutes=minutos)).timestamp()),
-        "iat": int(datetime.now(timezone.utc).timestamp()),
+        "exp": int((datetime.now(UTC) + timedelta(minutes=minutos)).timestamp()),
+        "iat": int(datetime.now(UTC).timestamp()),
     }
     cuerpo = _b64(json.dumps(payload, separators=(",", ":")).encode())
     firma = hmac.new(cfg.secret_key.encode(), cuerpo.encode(), hashlib.sha256).digest()
@@ -97,7 +97,7 @@ def leer_token(token: str | None) -> dict[str, Any] | None:
         datos = json.loads(_de_b64(cuerpo))
     except Exception:
         return None
-    if int(datos.get("exp", 0)) < int(datetime.now(timezone.utc).timestamp()):
+    if int(datos.get("exp", 0)) < int(datetime.now(UTC).timestamp()):
         return None
     return datos
 
@@ -119,7 +119,10 @@ def autenticar(email: str, password: str) -> tuple[str | None, dict[str, Any] | 
 
 
 def es_interno(us: dict[str, Any] | None) -> bool:
-    return bool(us) and us.get("rol") in {"interno", "admin"}
+    """¿Es del equipo de ABGA? `None` (sin sesión) nunca lo es."""
+    if not us:
+        return False
+    return us.get("rol") in {"interno", "admin"}
 
 
 def puede_ver_modulo(us: dict[str, Any] | None, interno: bool) -> bool:

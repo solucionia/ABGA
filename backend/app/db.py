@@ -7,8 +7,7 @@ asignadas; el rol `interno` (ABGA) ve todas y accede además a los informes de u
 """
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from . import bd, cache
@@ -34,12 +33,17 @@ def crear_usuario(email: str, nombre: str, hash_password: str, rol: str = "clien
     """
     email = email.lower().strip()
     previo = usuario_bruto(email)
+    if activo is None:
+        # Al actualizar sin decir nada, se conserva el estado que ya tenía (y su fecha de alta):
+        # reejecutar el alta de una base no puede devolver la vida a un usuario desactivado.
+        valor_activo = 1 if previo is None else int(bool(previo["activo"]))
+    else:
+        valor_activo = int(bool(activo))
     bd.upsert(
         "usuarios",
         ("email", "nombre", "password_hash", "rol", "activo", "creado"),
         ("email",),
-        (email, nombre, hash_password, rol,
-         1 if activo is None and previo is None else (int(bool(activo)) if activo is not None else previo["activo"]),
+        (email, nombre, hash_password, rol, valor_activo,
          previo["creado"] if previo else cache.ahora()),
     )
     if empresas is not None:
@@ -61,13 +65,17 @@ def actualizar_usuario(email: str, *, nombre: str | None = None, rol: str | None
     email = email.lower().strip()
     if usuario_bruto(email) is None:
         return False
-    campos, valores = [], []
+    campos: list[str] = []
+    valores: list[Any] = []
     if nombre is not None:
-        campos.append("nombre=?"); valores.append(nombre)
+        campos.append("nombre=?")
+        valores.append(nombre)
     if rol is not None:
-        campos.append("rol=?"); valores.append(rol)
+        campos.append("rol=?")
+        valores.append(rol)
     if activo is not None:
-        campos.append("activo=?"); valores.append(1 if activo else 0)
+        campos.append("activo=?")
+        valores.append(1 if activo else 0)
     if not campos:
         return True
     con = cache.conectar()
@@ -266,10 +274,46 @@ def resumen_ejecuciones(dias: int = 30) -> list[dict[str, Any]]:
     con el mismo formato, así que el orden alfabético es el cronológico. De este modo la
     consulta es idéntica en SQLite y en PostgreSQL (comparar un TEXT con un timestamptz falla
     en PostgreSQL)."""
-    desde = (datetime.now(timezone.utc) - timedelta(days=int(dias))).isoformat(timespec="seconds")
+    desde = (datetime.now(UTC) - timedelta(days=int(dias))).isoformat(timespec="seconds")
     filas = cache.conectar().execute(
         "SELECT cod_empresa, modulos, estado, COUNT(*) AS n, AVG(segundos) AS media_segundos,"
         " MAX(instante) AS ultima FROM ejecuciones"
         " WHERE instante >= ? GROUP BY cod_empresa, modulos, estado"
         " ORDER BY n DESC", (desde,)).fetchall()
     return [dict(f) for f in filas]
+
+
+# ---------- intentos de acceso ----------
+#
+# El contador vive en la **base de datos** y no en memoria del proceso: sobrevive a un reinicio y no
+# se multiplica por el número de procesos que atiendan la API (con dos procesos, el mismo límite
+# valía el doble). Los instantes se guardan en ISO y se comparan como texto, igual que en las
+# ejecuciones: la misma consulta sirve en SQLite y en PostgreSQL.
+
+def registrar_intento(clave: str) -> None:
+    con = cache.conectar()
+    con.execute("INSERT INTO intentos (clave, instante) VALUES (?, ?)", (str(clave), cache.ahora()))
+    con.commit()
+
+
+def contar_intentos(clave: str, ventana_segundos: float) -> int:
+    desde = (datetime.now(UTC) - timedelta(seconds=float(ventana_segundos))).isoformat(timespec="seconds")
+    fila = cache.conectar().execute(
+        "SELECT COUNT(*) AS n FROM intentos WHERE clave=? AND instante >= ?",
+        (str(clave), desde)).fetchone()
+    return int(fila["n"]) if fila else 0
+
+
+def limpiar_intentos(clave: str) -> None:
+    con = cache.conectar()
+    con.execute("DELETE FROM intentos WHERE clave=?", (str(clave),))
+    con.commit()
+
+
+def limpiar_intentos_caducados(ventana_segundos: float = 86400) -> int:
+    """Mantenimiento: borra los intentos que ya no cuentan para ningún límite."""
+    desde = (datetime.now(UTC) - timedelta(seconds=float(ventana_segundos))).isoformat(timespec="seconds")
+    con = cache.conectar()
+    cur = con.execute("DELETE FROM intentos WHERE instante < ?", (desde,))
+    con.commit()
+    return int(cur.rowcount or 0)

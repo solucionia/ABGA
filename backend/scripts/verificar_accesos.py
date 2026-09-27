@@ -98,7 +98,11 @@ def main() -> int:
           "mismo mensaje en los dos casos: no se revela qué códigos existen")
     r = anon.post("/api/registro", json={"email": CORREO, "password": "corta",
                                          "cod_empresa": EMPRESA, "pin": "X"})
-    check(r.status_code == 400, "contraseña demasiado corta, rechazada", f"{r.status_code}")
+    # El alta se valida con esquemas: un campo mal puesto responde 422 (antes 400) y diciendo cuál
+    # falla. El 400 queda para las reglas de negocio del login (falta el número de empresa).
+    check(r.status_code in (400, 422), "contraseña demasiado corta, rechazada", f"{r.status_code}")
+    check("password" in r.text.lower() or "contrase" in r.text.lower(),
+          "y el error dice qué campo falla", r.text[:70].replace("\n", " "))
 
     print("\n4) ABGA genera el PIN de la empresa")
     r = admin.post("/api/interno/pin", json={"cod_empresa": EMPRESA})
@@ -164,7 +168,11 @@ def main() -> int:
                                              "cod_empresa": EMPRESA_AGOTAR, "pin": "PROBANDOXX"})
         codigos.append(rr.status_code)
     check(codigos[-1] == 429, "tras varios fallos, corta por intentos", f"últimos: {codigos[-3:]}")
-    check(403 in codigos, "los primeros fallos son «PIN incorrecto» (403)")
+    # El contador ahora vive en la base y dura 15 minutos: si la suite se corre dos veces en esa
+    # ventana, la empresa llega ya bloqueada y no hay ningún 403 que ver (que el PIN malo responde
+    # 403 ya se comprueba, con una sola prueba, en el apartado 3).
+    check(403 in codigos or codigos[0] == 429, "los primeros fallos son «PIN incorrecto» (403)",
+          "ya venía bloqueada de una corrida anterior" if codigos[0] == 429 else "")
 
     print("\n9) revocar la empresa le quita el acceso")
     r = admin.post("/api/interno/usuarios/empresas", json={"email": CORREO, "empresas": []})

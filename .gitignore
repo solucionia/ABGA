@@ -24,6 +24,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
 
 # node (por si se añade un frontal con build)
 node_modules/

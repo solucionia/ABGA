@@ -16,10 +16,12 @@ una sola variable.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import sqlite3
 import threading
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from .config import cargar_config
 
@@ -36,10 +38,8 @@ def reiniciar() -> None:
     """Cierra la conexión del hilo actual (lo usan las pruebas para cambiar de motor)."""
     con = getattr(_local, "con", None)
     if con is not None:
-        try:
+        with contextlib.suppress(Exception):
             con.close()
-        except Exception:
-            pass
     _local.con = None
     _local.clave = None
     _esquema_asegurado.clear()
@@ -108,10 +108,8 @@ class Conexion:
         self._con.commit()
 
     def rollback(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self._con.rollback()
-        except Exception:
-            pass
 
     def close(self) -> None:
         self._con.close()

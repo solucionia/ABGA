@@ -38,12 +38,25 @@ de las secciones del original.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (Linea, MESES, anio_de, comprobar_cuadre, fmt, fmt_pct, mes_de, num,
-                      por_tercero, saldos_por_cuenta, serie_mensual, suma_acreedor,
-                      suma_deudor)
+from ..ledger import (
+    MESES,
+    Linea,
+    anio_de,
+    comprobar_cuadre,
+    fmt,
+    fmt_pct,
+    mes_de,
+    num,
+    por_tercero,
+    saldos_por_cuenta,
+    serie_mensual,
+    suma_acreedor,
+    suma_deudor,
+)
 
 NOMBRE = "autodespro"
 TITULO = "Informe Autodespro"
@@ -550,23 +563,23 @@ def _tabla_balance(datos: dict[str, Any]) -> str:
     filas_a = []
     for etiqueta, clave in datos["balanceActivo"]:
         filas_a.append([etiqueta, inf.importe(a.get(clave, 0.0)), inf.importe(ant.get(clave, 0.0))])
-    filas_a.append([f'<b>Activo corriente</b>', inf.importe(a.get("activoC", 0.0)),
+    filas_a.append(['<b>Activo corriente</b>', inf.importe(a.get("activoC", 0.0)),
                     inf.importe(ant.get("activoC", 0.0))])
-    filas_a.append([f'<b>TOTAL ACTIVO</b>', inf.importe(a.get("totalActivo", 0.0)),
+    filas_a.append(['<b>TOTAL ACTIVO</b>', inf.importe(a.get("totalActivo", 0.0)),
                     inf.importe(ant.get("totalActivo", 0.0))])
     tabla_a = inf.tabla(["Activo", y, ya], filas_a, anchos=["52%", "24%", "24%"], alinear="right")
 
     filas_p = []
     for etiqueta, clave in datos["balancePasivo"]:
         filas_p.append([etiqueta, inf.importe(a.get(clave, 0.0)), inf.importe(ant.get(clave, 0.0))])
-    filas_p.append([f'<b>Pasivo corriente</b>', inf.importe(a.get("pasC", 0.0)),
+    filas_p.append(['<b>Pasivo corriente</b>', inf.importe(a.get("pasC", 0.0)),
                     inf.importe(ant.get("pasC", 0.0))])
-    filas_p.append([f'<b>TOTAL PATRIMONIO NETO Y PASIVO</b>',
+    filas_p.append(['<b>TOTAL PATRIMONIO NETO Y PASIVO</b>',
                     inf.importe(a.get("pn", 0.0) + a.get("pasNC", 0.0) + a.get("pasC", 0.0)),
                     inf.importe(ant.get("pn", 0.0) + ant.get("pasNC", 0.0) + ant.get("pasC", 0.0))])
     tabla_p = inf.tabla(["Patrimonio neto y pasivo", y, ya], filas_p, anchos=["52%", "24%", "24%"],
                         alinear="right")
-    return tabla_a + f'<div style="height:10px"></div>' + tabla_p
+    return tabla_a + '<div style="height:10px"></div>' + tabla_p
 
 
 def _tabla_terceros(titulo: str, filas: list[dict[str, Any]], columna: str) -> str:
@@ -613,7 +626,7 @@ def _tabla_personal(datos: dict[str, Any]) -> str:
                          tipo="info")
     filas = [[c["nombre"] or c["cuenta"], inf.importe(c["debe"]), inf.importe(c["haber"]),
               inf.importe(c["saldo"])] for c in p["cuentas"]]
-    filas.append([f'<b>Total</b>', inf.importe(sum(c["debe"] for c in p["cuentas"])),
+    filas.append(['<b>Total</b>', inf.importe(sum(c["debe"] for c in p["cuentas"])),
                   inf.importe(sum(c["haber"] for c in p["cuentas"])),
                   inf.importe(p["total"])])
     return inf.tabla(["Concepto", "Debe", "Haber", "Gasto del ejercicio"], filas,

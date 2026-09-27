@@ -18,7 +18,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import apicon, db, modulos  # noqa: E402
+from app import apicon, db  # noqa: E402
 from app.config import cargar_config  # noqa: E402
 
 

@@ -38,8 +38,17 @@ from datetime import date
 from typing import Any
 
 from .. import informes as inf
-from ..ledger import (MESES_LARGOS, Linea, comprobar_cuadre, fmt, fmt_pct, por_trimestre,
-                      saldos_por_cuenta, suma_acreedor, suma_deudor)
+from ..ledger import (
+    MESES_LARGOS,
+    Linea,
+    comprobar_cuadre,
+    fmt,
+    fmt_pct,
+    por_trimestre,
+    saldos_por_cuenta,
+    suma_acreedor,
+    suma_deudor,
+)
 
 NOMBRE = "fiscal"
 TITULO = "Alertas fiscales"
@@ -421,7 +430,7 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any] | None = None, *,
         [["Base de ingresos (70x, 709…)", inf.importe(datos.get("baseIngresos", 0.0))],
          ["Base de gastos (60x-68x)", inf.importe(-datos.get("baseGastos", 0.0))],
          ["Base estimada del ejercicio", inf.importe(datos.get("baseIS", 0.0))],
-         [f'Tipo del mod. 202', fmt_pct(PORCENTAJE_202 * 100)],
+         ['Tipo del mod. 202', fmt_pct(PORCENTAJE_202 * 100)],
          ["Cuota estimada del pago fraccionado", inf.importe(datos.get("pagoFraccionadoIS", 0.0))],
          [f'Exigible en el {trimestre}T',
           ('<span style="color:#b26a00;font-weight:bold">Sí — plazo de '

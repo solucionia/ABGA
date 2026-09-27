@@ -36,7 +36,8 @@ Decisiones que conviene conocer antes de tocar el cálculo:
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .. import informes as inf
 from ..ledger import Linea, detectar_cierre, fecha_a_int, fmt
@@ -172,7 +173,7 @@ def etiqueta_grupo(grupo: str) -> str:
 
 
 def _etiqueta_cuenta(cuenta: str) -> str:
-    return CUENTA_VACIA if not cuenta else cuenta
+    return cuenta if cuenta else CUENTA_VACIA
 
 
 # ---------- cálculo ----------

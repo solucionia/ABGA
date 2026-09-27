@@ -21,8 +21,8 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import modulos                                    # noqa: E402
-from app.ledger import fmt, lineas_de_asientos, num        # noqa: E402
+from app import modulos  # noqa: E402
+from app.ledger import fmt, lineas_de_asientos, num  # noqa: E402
 
 OK, FALLOS = [], []
 
@@ -64,12 +64,14 @@ def main() -> int:
         return 1
     comprobar(defn.nombre == "conciliacion", f"NOMBRE = {defn.nombre!r}")
     comprobar(defn.titulo == "Conciliación de mayores", f"TITULO = {defn.titulo!r}")
-    comprobar(defn.interno is True, "INTERNO = True (informe de uso interno)")
+    comprobar(defn.interno is False,
+              "INTERNO = False: la conciliación se le enseña al cliente (reunión del 18/09/2026) y "
+              "puede comentar los movimientos pendientes")
     comprobar(defn.desplazamientos == [0], f"DESPLAZAMIENTOS = {defn.desplazamientos} (no necesita años previos)")
     comprobar(modulos.anios_necesarios("conciliacion", year) == [year],
               f"anios_necesarios = {modulos.anios_necesarios('conciliacion', year)}")
-    comprobar("conciliacion" not in {d.nombre for d in modulos.listar()},
-              "no aparece en el catálogo público del portal")
+    comprobar("conciliacion" in {d.nombre for d in modulos.listar()},
+              "sí aparece en el catálogo público del portal")
     params = defn.parametros
     comprobar(set(params) == {"top_cuentas", "top_terceros", "dias_antiguedad", "limite_hallazgos",
                               "minimo_pendiente"}, f"PARAMETROS = {params}")
@@ -173,9 +175,9 @@ def main() -> int:
     comprobar("```" not in html and "<script" not in html.lower(),
               "no hay bloques de código ni JavaScript")
     comprobar("font-family:Arial" in html.replace(" ", ""), "fuente Arial, como exige el contrato")
-    comprobar("[USO INTERNO]" in html, "lleva la etiqueta [USO INTERNO]")
-    comprobar("Generado automáticamente" in html, "pie de informe interno")
-    comprobar("farias@abgaconsultores.com" not in html, "no lleva datos de contacto de cliente")
+    comprobar("[USO INTERNO]" not in html,
+              "no lleva la etiqueta [USO INTERNO]: es un informe de cliente")
+    comprobar("farias@abgaconsultores.com" in html, "cierra con el pie de contacto de ABGA")
     comprobar(html.rstrip().endswith("</div>"), "cierra con </div>")
     comprobar(len(html) > 3000, f"el HTML tiene cuerpo suficiente ({len(html)} caracteres)")
     if args.html:

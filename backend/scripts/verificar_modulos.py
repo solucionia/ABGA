@@ -16,7 +16,6 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import informes as inf  # noqa: E402
 from app import modulos  # noqa: E402
 from app.ledger import lineas_de_asientos  # noqa: E402
 
@@ -65,7 +64,7 @@ def main() -> None:
             resumen.append((nombre, False, 0.0, 0))
             continue
 
-        ctx = {**ctx_base, **{k: v for k, v in d.parametros.items()}}
+        ctx = {**ctx_base, **dict(d.parametros.items())}
         por_anio = {y: lineas.get(y, []) for y in modulos.anios_necesarios(nombre, 2025)}
         import time as _t
         t0 = _t.perf_counter()

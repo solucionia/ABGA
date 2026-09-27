@@ -53,9 +53,9 @@ def _comprobar(condicion: bool, texto: str) -> None:
 def _filas(datos: dict) -> list[dict]:
     """Encuentra el detalle por cuenta del informe de sumas y saldos sin saber su nombre exacto."""
     for valor in datos.values():
-        if isinstance(valor, list) and valor and isinstance(valor[0], dict):
-            if {"cuenta"} <= set(valor[0]):
-                return valor
+        if (isinstance(valor, list) and valor and isinstance(valor[0], dict)
+                and {"cuenta"} <= set(valor[0])):
+            return valor
     return []
 
 
@@ -81,9 +81,7 @@ def _movimiento_del_ejercicio(lineas: list) -> list:
     fuera = set()
     for clave, ls in por_clave.items():
         f = fecha_a_int(ls[0].fecha)
-        if f % 10000 == 101:
-            fuera.add(clave)
-        elif f % 10000 == 1231 and any((x.cuenta or "").startswith("129") for x in ls):
+        if f % 10000 == 101 or f % 10000 == 1231 and any((x.cuenta or "").startswith("129") for x in ls):
             fuera.add(clave)
     return [ln for ln in lineas if (str(ln.fecha), str(ln.serie), str(ln.documento)) not in fuera]
 
@@ -178,7 +176,7 @@ def main() -> int:
             print(f"    - {f}")
         return 1
     if pendientes:
-        print(f"  Lo que sí debe cumplirse, se cumple.")
+        print("  Lo que sí debe cumplirse, se cumple.")
         print(f"  {len(pendientes)} punto(s) pendientes de una decisión de negocio (no son fallos):")
         for p in pendientes:
             print(f"    ? {p}")

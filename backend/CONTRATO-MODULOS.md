@@ -7,14 +7,22 @@ Documento de trabajo para quien implemente un módulo nuevo. Se lee junto a `app
 
 ```
 backend/app/
-├── config.py      # .env, credenciales, TTL, ritmo hacia el ERP
-├── apicon.py      # cliente del ERP: token cacheado, paginación, reintentos 429
-├── cache.py       # SQLite: apuntes por (empresa, ejercicio), tokens, usuarios, ejecuciones
+├── main.py        # composición: routers, manejadores de error y ficheros estáticos
+├── api/           # endpoints (rutas/), contratos Pydantic (esquemas.py), permisos (dependencias.py)
+├── aplicacion/    # casos de uso: sesión, usuarios, informes, catálogo
+├── errores.py     # vocabulario de errores (estado HTTP + código estable)
+├── servicio.py    # orquesta: coge años → calcula → pinta → registra la ejecución
 ├── ledger.py      # primitivas contables: Linea, saldos, prefijos, series
 ├── informes.py    # maquetación HTML obligatoria + gráficas SVG
 ├── modulos/       # un fichero por informe: pyg, fiscal, memoria, …
-└── servicio.py    # orquesta: coge años → calcula → pinta → registra la ejecución
+└── apicon.py bd.py cache.py db.py auth.py trabajos.py config.py esquema.py  # infraestructura
 ```
+
+**El dominio no importa infraestructura.** Un módulo de `modulos/` no puede importar `apicon`,
+`cache`, `db` ni FastAPI: recibe las líneas ya cargadas y devuelve números. Eso es lo que permite
+probarlo con datos sintéticos y sin tocar el ERP, y lo comprueba la suite
+(`backend/tests/test_arquitectura.py`, que lee los `import` reales). Si necesitas un dato que no
+está en las líneas, no lo pidas desde el módulo: va como `PARAMETROS` o se declara en `avisos`.
 
 ## Contrato de un módulo
 

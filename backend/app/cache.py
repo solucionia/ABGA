@@ -9,7 +9,7 @@ aquí sólo se escribe SQL portable.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from . import bd
@@ -17,7 +17,7 @@ from .config import cargar_config
 
 
 def ahora() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def conectar() -> bd.Conexion:
@@ -36,7 +36,7 @@ def leer_apuntes(empresa: str, ejercicio: int, ttl: int | None = None) -> dict[s
     ).fetchone()
     if not fila:
         return None
-    edad = (datetime.now(timezone.utc) - datetime.fromisoformat(fila["actualizado"])).total_seconds()
+    edad = (datetime.now(UTC) - datetime.fromisoformat(fila["actualizado"])).total_seconds()
     if ttl >= 0 and edad > ttl:
         return None
     return {
@@ -94,7 +94,7 @@ def leer_token(empresa: str) -> dict[str, Any] | None:
     fila = conectar().execute("SELECT * FROM tokens WHERE empresa=?", (empresa,)).fetchone()
     if not fila:
         return None
-    if datetime.fromisoformat(fila["expira_en"]) <= datetime.now(timezone.utc):
+    if datetime.fromisoformat(fila["expira_en"]) <= datetime.now(UTC):
         return None
     return {"access_token": fila["access_token"], "expira_en": fila["expira_en"]}
 
@@ -115,7 +115,7 @@ def leer_calc(clave: str, ttl: int | None = None) -> Any | None:
     if not fila:
         return None
     if ttl is not None and ttl >= 0:
-        edad = (datetime.now(timezone.utc) - datetime.fromisoformat(fila["actualizado"])).total_seconds()
+        edad = (datetime.now(UTC) - datetime.fromisoformat(fila["actualizado"])).total_seconds()
         if edad > ttl:
             return None
     return json.loads(fila["payload"])

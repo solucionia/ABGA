@@ -1,0 +1,13 @@
+# Dependencias de DESARROLLO: pruebas, estilo y tipos.
+#
+#   ./.venv/bin/pip install -r backend/requirements-dev.txt
+#
+# No van a la imagen: el contenedor sólo necesita backend/requirements.txt.
+-r requirements.txt
+pytest>=8,<10
+pytest-cov>=6,<8
+ruff>=0.9
+mypy>=1.14
+# Opcional: PostgreSQL embebido para las pruebas que levantan un motor de verdad.
+# Descomentar para `make lento` (backend/tests/test_copia.py y scripts/verificar_bd.py).
+# pgserver>=0.1

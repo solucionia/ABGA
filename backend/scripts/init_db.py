@@ -32,7 +32,7 @@ USUARIOS = [
 
 
 def main() -> None:
-    cfg = cargar_config()
+    cargar_config()  # falla aquí, y no en la primera petición, si faltan credenciales
     cache.conectar()  # crea el esquema
 
     for cod, nombre, inicio in EMPRESAS:

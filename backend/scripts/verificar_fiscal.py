@@ -22,7 +22,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import modulos                     # noqa: E402
+from app import modulos  # noqa: E402
 from app.ledger import fmt, lineas_de_asientos  # noqa: E402
 
 FIXTURE = RAIZ / "fixtures" / "apuntes_6091_2025.json"

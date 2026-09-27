@@ -12,6 +12,7 @@ Escribe los informes en `data/` para poder abrirlos en el navegador.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -106,9 +107,21 @@ def main() -> int:
         print(f"    {clave:20s} {t['tendencia']:11s} tasa {t['tasaCrecimiento']:>8.2f}%/año "
               f"R²={t['r2']:.3f} n={t['n']} → {datos['yearProyectado']}: {proy}")
     ti = datos["tendencias"]["ingresos"]
-    check(ti["n"] == 2 and ti["pendiente"] > 0,
-          f"pendiente de ingresos positiva con 2 ejercicios ({importe(ti['pendiente'])}/año)")
-    check(datos["tendencias"]["tesoreria"]["n"] == 0, "sin cuentas 57x no se ajusta tendencia de tesorería")
+    # La expectativa original («pendiente positiva») se escribió cuando sólo había un ejercicio real.
+    # Con los dos que hay, los ingresos BAJARON de 2024 a 2025, así que la tendencia correcta es
+    # decreciente: lo que se comprueba es que el signo coincide con los datos, no un signo fijo.
+    ingresos_hist = {f["year"]: f["ingresos"] for f in datos["historico"]
+                     if f.get("ingresos") is not None}
+    anios_hist = sorted(ingresos_hist)
+    sube = ingresos_hist[anios_hist[-1]] > ingresos_hist[anios_hist[0]]
+    check(ti["n"] == len(anios_hist) and (ti["pendiente"] > 0) == sube,
+          f"pendiente de ingresos coherente con los {len(anios_hist)} ejercicios con datos "
+          f"({importe(ti['pendiente'])}/año, {ti['tendencia']})")
+    # Sin cuentas 57x el ERP no trae el banco: la tendencia de tesorería tiene que quedar a cero y
+    # avisarlo, en lugar de estimar un saldo con la caja generada sin decirlo.
+    tes = datos["tendencias"]["tesoreria"]
+    check(tes["pendiente"] == 0 and tes["proyeccion"] == 0 and datos["hayTesoreria"] is False,
+          "sin cuentas 57x la tendencia de tesorería queda a cero (no se inventa el banco)")
     check(datos["hayTesoreria"] is False and any("570-577" in a for a in datos["avisos"]),
           "se avisa de que el ERP no trae tesorería y se ofrece la caja generada")
 
@@ -121,7 +134,12 @@ def main() -> int:
         print(f"    {clave:20s} {importe(b[clave])}")
     check(abs(b["ebitda"] - (b["ingresos"] - b["gastosExplotacion"])) < 0.01,
           "la cascada del PyG proyectado cuadra (EBITDA = ingresos − gastos de explotación)")
-    check(b["resultado"] == b["rai"] - b["impuesto"], "resultado = RAI − impuesto")
+    # El módulo redondea cada magnitud por separado, así que la resta puede irse un céntimo: se
+    # compara con tolerancia de un céntimo (y no con `==`). Si algún día se decide que el PyG
+    # proyectado tiene que cuadrar al céntimo consigo mismo, esto pasará a `==` (ver ARQUITECTURA.md).
+    check(abs(b["resultado"] - (b["rai"] - b["impuesto"])) <= 0.01,
+          f"resultado = RAI − impuesto ({importe(b['rai'])} − {importe(b['impuesto'])} "
+          f"= {importe(b['rai'] - b['impuesto'])} frente a {importe(b['resultado'])})")
     check(b["impuesto"] == round(b["rai"] * 0.25, 2) if b["rai"] > 0 else b["impuesto"] == 0,
           f"impuesto al 25% sobre un RAI positivo ({importe(b['impuesto'])})")
     check(b["margenNeto"] == round(b["resultado"] / b["ingresos"] * 100, 2), "margen neto coherente")
@@ -203,8 +221,10 @@ def main() -> int:
     check("MB Dommo, S.L." in html and "Ejercicio 2025" in html, "empresa y ejercicio en la cabecera")
     check("farias@abgaconsultores.com" in html and "[USO INTERNO]" not in html,
           "pie de cliente, sin marca de uso interno")
-    check("€" in html and "septiembre" in html.lower() or "1.462" in html,
-          "importes en formato es-ES")
+    # Los importes tienen que ir en su propia celda y en formato español: si van embebidos en una
+    # frase no se pueden exportar ni comprobar (es el fallo clásico de estos informes).
+    importes_html = re.findall(r">-?[\d.]+,\d{2} €<", html)
+    check(bool(importes_html), f"importes en formato es-ES en su celda ({len(importes_html)} encontrados)")
     check(html.count("<table") >= 6, f"secciones tabuladas: {html.count('<table')} tablas")
     check(all(f"<b>{t}</b>" not in html for t in ["None", "nan", "NaN", "undefined"]),
           "sin valores nulos/nan sueltos en el HTML")

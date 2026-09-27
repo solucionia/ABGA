@@ -44,11 +44,11 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (Linea, comprobar_cuadre, fecha_a_int, fmt, fmt_pct, num,
-                      saldos_por_cuenta)
+from ..ledger import Linea, comprobar_cuadre, fecha_a_int, fmt, fmt_pct, num, saldos_por_cuenta
 
 NOMBRE = "conciliacion"
 TITULO = "Conciliación de mayores"
@@ -390,7 +390,7 @@ def detectar_anomalias(lineas: list[Linea], *, limite: int | None = None) -> lis
                             "anticipo sin aplicar o factura recibida dos veces."))
 
     # 3. Tesorería con cobro/pago sin contrapartida de cliente o proveedor en el mismo asiento.
-    for clave, apuntes in agrupar_asientos(lineas).items():
+    for _clave, apuntes in agrupar_asientos(lineas).items():
         if len(apuntes) < 2:
             continue
         if not any(a.cuenta.startswith(PREFIJOS_TESORERIA) for a in apuntes):
@@ -427,7 +427,7 @@ def detectar_anomalias(lineas: list[Linea], *, limite: int | None = None) -> lis
 
     # 5. Asientos repetidos: misma fecha e importe, en documentos distintos.
     por_importe: dict[tuple[int, int], list[dict[str, Any]]] = {}
-    for clave, apuntes in agrupar_asientos(lineas).items():
+    for _clave, apuntes in agrupar_asientos(lineas).items():
         if len(apuntes) < 2:
             continue
         total_debe = round(sum(a.debe for a in apuntes), 2)

@@ -56,11 +56,21 @@ El JavaScript **inventaba cifras** cuando no las tenía, y eso no se puede porta
 """
 from __future__ import annotations
 
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (MESES_LARGOS, Linea, comprobar_cuadre, fmt, fmt_pct, num,
-                      saldos_por_cuenta, suma_acreedor, suma_deudor)
+from ..ledger import (
+    MESES_LARGOS,
+    Linea,
+    comprobar_cuadre,
+    fmt,
+    fmt_pct,
+    num,
+    saldos_por_cuenta,
+    suma_acreedor,
+    suma_deudor,
+)
 
 NOMBRE = "memoria"
 TITULO = "Memoria de cuentas anuales (PGC PYME)"
@@ -944,7 +954,7 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any] | None = None) -> st
     else:
         avisos_pasivo = ""
     nota7 = (
-        inf.tabla(["Deudas por naturaleza", f"Importe", "Vencimiento"],
+        inf.tabla(["Deudas por naturaleza", "Importe", "Vencimiento"],
                   filas_pasivos,
                   totales=["TOTAL PASIVO EXIGIBLE", inf.importe(datos.get("exigible", 0.0)), ""],
                   anchos=["56%", "22%", "22%"])

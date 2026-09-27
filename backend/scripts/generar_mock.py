@@ -10,11 +10,13 @@ cliente, así que `mock/` está en .gitignore.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import httpx
-import os
+
+
 def clave_admin() -> str:
     """Contraseña del usuario interno de ABGA: del entorno o de `.env`, nunca escrita aquí."""
     v = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "")

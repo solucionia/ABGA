@@ -56,6 +56,28 @@ class Config:
     )
 
 
+def origenes_cors() -> tuple[str, ...]:
+    """Orígenes permitidos por CORS, de `CORS_ORIGENES` (lista separada por comas).
+
+    **Vacío es lo correcto y es el defecto**: el panel se sirve desde el mismo origen que la API
+    (`frontend/` lo monta esta misma aplicación), así que no hace falta CORS y abrirlo con
+    credenciales sólo amplía la superficie. Sólo se rellena si algún día el frontal vive en otro
+    dominio. No se admiten comodines: `*` con `allow_credentials` hace que el navegador acepte
+    cualquier origen.
+    """
+    env = _leer_env(RAIZ_PROYECTO / ".env")
+    for clave, valor in os.environ.items():
+        if clave == "CORS_ORIGENES":
+            env[clave] = valor
+    crudo = (env.get("CORS_ORIGENES") or "").strip()
+    if not crudo or crudo == "*":
+        return ()
+    return tuple(o.strip() for o in crudo.split(",") if o.strip())
+
+
+LARGO_MINIMO_SECRET_KEY = 32
+
+
 @lru_cache(maxsize=1)
 def cargar_config(ruta_env: Path | None = None) -> Config:
     ruta = ruta_env or (RAIZ_PROYECTO / ".env")
@@ -70,6 +92,16 @@ def cargar_config(ruta_env: Path | None = None) -> Config:
     ]
     if faltan:
         raise RuntimeError(f"Faltan credenciales en {ruta}: {', '.join(faltan)}")
+
+    # La `SECRET_KEY` firma las cookies de sesión: si falta o es corta, se puede falsificar una
+    # sesión. Antes tenía un valor por defecto («cambiar-esta-clave»), así que un despliegue mal
+    # configurado arrancaba igual y con una clave que cualquiera puede leer en el repositorio.
+    secret_key = (env.get("SECRET_KEY") or "").strip()
+    if len(secret_key) < LARGO_MINIMO_SECRET_KEY:
+        raise RuntimeError(
+            f"SECRET_KEY falta o es demasiado corta en {ruta} ({len(secret_key)} caracteres, "
+            f"mínimo {LARGO_MINIMO_SECRET_KEY}): con ella se firman las sesiones. Genera una con "
+            f"«python3 -c \\\"import secrets; print(secrets.token_urlsafe(48))\\\"».")
 
     cache_db = Path(env.get("CACHE_DB", "./data/abga.sqlite3"))
     if not cache_db.is_absolute():
@@ -87,7 +119,7 @@ def cargar_config(ruta_env: Path | None = None) -> Config:
         cache_db=cache_db,
         database_url=env.get("DATABASE_URL", "").strip(),
         ttl_apuntes=int(env.get("CACHE_TTL_APUNTES", "43200")),
-        secret_key=env.get("SECRET_KEY", "cambiar-esta-clave"),
+        secret_key=secret_key,
         token_ttl_min=int(env.get("TOKEN_TTL_MIN", "480")),
         demo_auto_login=env.get("DEMO_AUTO_LOGIN", "").strip().lower(),
         solo_cache=env.get("APICON_SOLO_CACHE", "").strip().lower() in {"1", "true", "si", "sí", "yes"},

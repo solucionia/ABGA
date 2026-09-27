@@ -12,7 +12,8 @@ informes sean visuales también al imprimirlos.
 from __future__ import annotations
 
 import html
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 AZUL = "#1a4b8c"
 AZUL_CLARO = "#e8f0fb"
@@ -42,7 +43,6 @@ def esc(v: Any) -> str:
 
 def importe(n: Any, *, con_signo: bool = False, moneda: bool = True) -> str:
     """Importe es-ES con color: rojo si negativo, verde si positivo."""
-    from .ledger import fmt
 
     if isinstance(n, bool) or not isinstance(n, (int, float)):
         return f'<span style="color:#666">{fmt(n)}</span>'
@@ -214,7 +214,7 @@ def barras_svg(categorias: Sequence[str], series: Sequence[dict[str, Any]], *,
         partes.append(f'<text x="{margen_izq + ci * ancho_grupo + ancho_grupo / 2:.1f}" '
                       f'y="{alto - 10}" font-size="10.5" fill="#5b6b80" text-anchor="middle" '
                       f'font-family="Arial,Helvetica,sans-serif">{esc(cat)}</text>')
-    leyenda_x = margen_izq
+    leyenda_x: float = margen_izq
     for s in series:
         partes.append(f'<rect x="{leyenda_x}" y="{margen_sup - 16}" width="9" height="9" '
                       f'fill="{s.get("color", AZUL)}" rx="1.5"/>')
@@ -246,7 +246,7 @@ def lineas_svg(categorias: Sequence[str], series: Sequence[dict[str, Any]], *,
     if minimo < 0:
         partes.append(f'<line x1="{margen_izq}" y1="{yy(0):.1f}" x2="{ancho - margen_der}" y2="{yy(0):.1f}" '
                       f'stroke="#c9d4e4" stroke-width="1" stroke-dasharray="3,3"/>')
-    for si, s in enumerate(series):
+    for _si, s in enumerate(series):
         vals = [float(v) for v in s.get("valores", [])]
         puntos = " ".join(f"{margen_izq + i * ancho_util / (n - 1):.1f},{yy(v):.1f}" for i, v in enumerate(vals))
         color = s.get("color", AZUL)
@@ -259,7 +259,7 @@ def lineas_svg(categorias: Sequence[str], series: Sequence[dict[str, Any]], *,
     for i, cat in enumerate(categorias):
         partes.append(f'<text x="{margen_izq + i * ancho_util / (n - 1):.1f}" y="{alto - 9}" font-size="10.5" '
                       f'fill="#5b6b80" text-anchor="middle" font-family="Arial,Helvetica,sans-serif">{esc(cat)}</text>')
-    leyenda_x = margen_izq
+    leyenda_x: float = margen_izq
     for s in series:
         partes.append(f'<rect x="{leyenda_x}" y="{margen_sup - 16}" width="9" height="9" fill="{s.get("color", AZUL)}" rx="1.5"/>')
         partes.append(f'<text x="{leyenda_x + 13}" y="{margen_sup - 7.5}" font-size="11" fill="#3c4a5c" '
@@ -271,7 +271,7 @@ def lineas_svg(categorias: Sequence[str], series: Sequence[dict[str, Any]], *,
 
 def barra_pct(pct: float, *, etiqueta: str = "", color: str = AZUL) -> str:
     pct = max(0.0, min(100.0, float(pct or 0)))
-    return (f'<div style="margin:3px 0">'
+    return ('<div style="margin:3px 0">'
             + (f'<div style="font-size:11px;color:#5b6b80">{esc(etiqueta)}</div>' if etiqueta else "")
             + f'<div style="background:#eef2f8;border-radius:3px;height:9px;overflow:hidden">'
             f'<div style="width:{pct:.1f}%;height:100%;background:{color}"></div></div>'

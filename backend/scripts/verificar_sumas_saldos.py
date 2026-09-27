@@ -30,9 +30,14 @@ RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
 from app import cache, modulos  # noqa: E402
+from app.ledger import (  # noqa: E402
+    comprobar_cuadre,
+    detectar_cierre,
+    fmt,
+    lineas_de_asientos,
+    saldos_por_cuenta,
+)
 from app.modulos import sumas_saldos as mod  # noqa: E402
-from app.ledger import (comprobar_cuadre, detectar_cierre, fmt, lineas_de_asientos,  # noqa: E402
-                        saldos_por_cuenta)
 
 ANCHO = 78
 fallos: list[str] = []

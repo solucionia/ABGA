@@ -6,7 +6,6 @@ No imprime credenciales ni importes: sólo métricas y recuentos.
 from __future__ import annotations
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -92,7 +91,9 @@ def main() -> None:
 
         # 2) ¿se puede contar exacto?
         for extra in ({"$count": "true"}, {"$inlinecount": "allpages"}):
-            p2 = dict(params); p2["$top"] = "1"; p2.update(extra)
+            p2 = dict(params)
+            p2["$top"] = "1"
+            p2.update(extra)
             r2 = c.get(url, params=p2, headers=cab)
             cuerpo = r2.text
             raiz_count = '"count"' in cuerpo[:200]
@@ -112,7 +113,7 @@ def main() -> None:
             print(f"  ¿$skip aplica? primera fecha sin skip={f1} con $skip=3 -> {f2} | parecen ordenados={datos == sorted(datos, key=lambda x: str(x.get('Fecha')))}")
 
         # 4) filtros por rango de fechas (más fino que el ejercicio)
-        p4 = {"$filter": f"Fecha ge '2025-01-01' and Fecha le '2025-12-31'", "$top": "5"}
+        p4 = {"$filter": "Fecha ge '2025-01-01' and Fecha le '2025-12-31'", "$top": "5"}
         r4 = c.get(url, params=p4, headers=cab)
         try:
             n4 = len(r4.json().get("Datos") or [])

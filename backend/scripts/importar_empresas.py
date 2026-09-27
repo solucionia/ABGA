@@ -88,7 +88,7 @@ def leer(ruta: Path) -> list[dict[str, str]]:
             continue  # títulos, filas de adorno o códigos basura
         filas.append(dict(zip(cabeceras or
                               ["Código", "NIF", "Nombre", "Fecha Alta", "Laboral", "Contabilidad",
-                               "Obligaciones", "Facturación"], valores)))
+                               "Obligaciones", "Facturación"], valores, strict=False)))
     return filas
 
 

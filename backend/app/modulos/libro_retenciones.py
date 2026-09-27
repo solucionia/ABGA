@@ -49,11 +49,22 @@ Reglas de negocio —decisión y porqué, para que nadie las «arregle» sin que
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (MESES, Linea, comprobar_cuadre, detectar_cierre, fecha_a_int, fmt,
-                      fmt_pct, mes_de, nombre_tercero, trimestre_de)
+from ..ledger import (
+    MESES,
+    Linea,
+    comprobar_cuadre,
+    detectar_cierre,
+    fecha_a_int,
+    fmt,
+    fmt_pct,
+    mes_de,
+    nombre_tercero,
+    trimestre_de,
+)
 
 NOMBRE = "libro_retenciones"
 TITULO = "Libro de retenciones"
@@ -572,7 +583,7 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any] | None = None, *,
     # 2 · resumen por trimestres y modelo que se declara
     filas_res = []
     for d in por_q:
-        marca = (f' <span style="font-size:10.5px;color:#5b6b80">(trimestre pedido)</span>'
+        marca = (' <span style="font-size:10.5px;color:#5b6b80">(trimestre pedido)</span>'
                  if trimestre and d["trimestre"] == trimestre else "")
         filas_res.append([
             f'{d["trimestre"]}T <span style="color:#8a95a6">({inf.esc(d["periodo"])})</span>{marca}',

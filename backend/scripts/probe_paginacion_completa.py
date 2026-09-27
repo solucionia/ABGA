@@ -106,7 +106,6 @@ def main() -> None:
     for a in j.get("Datos") or []:
         vistos[clave(a)] = a
 
-    n_pag = 0
     for skip in range(200, min(total or 0, 2000), 200):
         r = get("/api/apuntes/", {"$filter": f"Ejercicio eq '{YEAR}'", "$top": "200", "$skip": str(skip)}, cab, f"skip={skip}")
         if r.status_code != 200:
@@ -118,7 +117,6 @@ def main() -> None:
             vistos[clave(a)] = a
         print(f"    skip={skip}: devueltos={len(datos)} nuevos={nuevos} acumulado={len(vistos)}")
         (RAW / f"pag_skip{skip}_{EMPRESA}_{YEAR}.json").write_bytes(r.content)
-        n_pag += 1
         if not datos or nuevos == 0:
             print("    -> la paginación se ha agotado o no avanza")
             break

@@ -40,11 +40,21 @@ módulos) y nunca escribe por pantalla; los avisos van en `datos["avisos"]`.
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (MESES, MESES_LARGOS, Linea, fecha_a_int, fmt, fmt_pct, mes_de,
-                      nombre_tercero, trimestre_de)
+from ..ledger import (
+    MESES,
+    MESES_LARGOS,
+    Linea,
+    fecha_a_int,
+    fmt,
+    fmt_pct,
+    mes_de,
+    nombre_tercero,
+    trimestre_de,
+)
 
 NOMBRE = "libro_iva"
 TITULO = "Libro de IVA"
@@ -120,7 +130,7 @@ def movimientos_de(lineas: Iterable[Linea]) -> list[dict[str, Any]]:
     tercero, `base` (None si no se puede derivar), `cuota`, `tipo_pct` (None si no hay base),
     `cuentas` (subcuentas de IVA sumadas), `n_lineas_iva`, mes y trimestre.
     """
-    asientos: "OrderedDict[tuple[int, str, str], list[Linea]]" = OrderedDict()
+    asientos: OrderedDict[tuple[int, str, str], list[Linea]] = OrderedDict()
     for l in lineas:
         asientos.setdefault(_clave_asiento(l), []).append(l)
 

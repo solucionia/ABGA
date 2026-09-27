@@ -31,7 +31,7 @@ import sys
 RAIZ = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import auth, bd, cache, db  # noqa: E402
+from app import auth, bd, cache, db, trabajos  # noqa: E402
 from app.config import cargar_config  # noqa: E402
 
 
@@ -41,7 +41,8 @@ def comprobar_config() -> None:
     Sin las credenciales del ERP, `cargar_config()` lanza una excepción en cuanto alguien entra (la
     primera llamada que la necesita): el contenedor arrancaría, el panel se vería y todo lo demás
     devolvería 500 sin decir por qué. Mejor que el despliegue falle aquí y el log diga qué variable
-    falta.
+    falta. Lo mismo con la `SECRET_KEY`, que firma las sesiones: sin ella (o siendo corta) se
+    podría falsificar una sesión.
     """
     try:
         cargar_config()
@@ -50,6 +51,25 @@ def comprobar_config() -> None:
         print("[arranque] revisa las variables de entorno del despliegue; no se arranca a medias.",
               flush=True)
         raise SystemExit(1) from None
+
+
+def comprobar_procesos() -> None:
+    """La plataforma es de un solo proceso, y se dice en voz alta.
+
+    Los trabajos en segundo plano corren en **hilos de este proceso** (su estado se guarda en la
+    base, pero el hilo no). Con varios procesos de uvicorn, un trabajo lanzado en uno sería
+    invisible para el otro y el progreso que ve el portal dependería de a qué proceso le tocara la
+    petición. Mientras eso no se resuelva con una cola de verdad, se arranca con uno y se avisa:
+    más vale fallar al arrancar que descubrirlo con un cliente mirando una barra de progreso.
+    """
+    pedidos = int(os.environ.get("WEB_CONCURRENCY") or 1)
+    if pedidos != 1:
+        print(f"[arranque] ERROR: WEB_CONCURRENCY={pedidos}. La plataforma se declara de un solo "
+              f"proceso (los trabajos en segundo plano son hilos de este proceso; ver "
+              f"ARQUITECTURA.md, Fase 2). Quita la variable para arrancar con uno.", flush=True)
+        raise SystemExit(1)
+    print("[arranque] un solo proceso: los trabajos en segundo plano corren en hilos de este "
+          "proceso (su estado, en la base de datos).", flush=True)
 
 
 def comprobar_base() -> None:
@@ -83,7 +103,13 @@ def preparar_interno() -> None:
 
 def main() -> None:
     comprobar_config()
+    comprobar_procesos()
     comprobar_base()
+    # Los trabajos que quedaron «en curso» son de un proceso que ya no existe: se marcan para que el
+    # portal no se quede mirando una barra de progreso que nunca va a avanzar.
+    interrumpidos = trabajos.marcar_interrumpidos()
+    if interrumpidos:
+        print(f"[arranque] {interrumpidos} trabajos marcados como interrumpidos", flush=True)
     preparar_interno()
     puerto = os.environ.get("PORT", "8000")
     print(f"[arranque] uvicorn escuchando en 0.0.0.0:{puerto}", flush=True)

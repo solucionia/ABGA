@@ -13,9 +13,16 @@ from datetime import date
 from typing import Any
 
 from .. import informes as inf
-from ..ledger import (Linea, MESES, MESES_LARGOS, a_float, agrupar_por_cuenta, fmt, fmt_pct,
-                      mes_de, num, por_mes, por_tercero, saldos_por_cuenta, serie_mensual,
-                      suma_acreedor, suma_deudor)
+from ..ledger import (
+    MESES_LARGOS,
+    Linea,
+    agrupar_por_cuenta,
+    fmt,
+    fmt_pct,
+    mes_de,
+    por_tercero,
+    serie_mensual,
+)
 from . import pyg
 
 NOMBRE = "dashboard"
@@ -31,7 +38,7 @@ P_PROVEEDORES = pyg.P_PROVEEDORES
 def _tesoreria_mensual(lineas: list[Linea]) -> list[float]:
     """Saldo de tesorería al cierre de cada mes (acumulado, no flujo del mes)."""
     saldos = [0.0] * 13
-    movimiento = {m: 0.0 for m in range(1, 13)}
+    movimiento = dict.fromkeys(range(1, 13), 0.0)
     for l in lineas:
         if any(l.cuenta.startswith(p) for p in P_TESORERIA):
             m = mes_de(l.fecha)
@@ -115,8 +122,8 @@ def calcular(por_anio: dict[int, list[Linea]], ctx: dict) -> dict[str, Any]:
     if not por_anio.get(year - 1):
         avisos.append(f"No hay datos de {year - 1}: la comparativa interanual no está disponible.")
     if actual["resultadoNeto"] < 0:
-        avisos.append(("El resultado acumulado a la fecha es negativo." if en_curso
-                       else "El ejercicio cierra con resultado negativo."))
+        avisos.append("El resultado acumulado a la fecha es negativo." if en_curso
+                       else "El ejercicio cierra con resultado negativo.")
     if actual["fondoManiobra"] < 0:
         avisos.append("El fondo de maniobra es negativo: el circulante no cubre las deudas a corto.")
     if actual["endeudamiento"] > 75:
@@ -153,7 +160,6 @@ def metricas_dashboard(datos: dict[str, Any]) -> dict[str, Any]:
 
 
 def informe_html(datos: dict[str, Any], ctx: dict) -> str:
-    year = datos["year"]
     k = datos["kpis"]
     mensual = datos["mensual"]
     categorias = [f["mes"] for f in mensual]

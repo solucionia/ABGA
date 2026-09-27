@@ -21,7 +21,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import bd, cache, db  # noqa: E402
+from app import bd, cache, db, trabajos  # noqa: E402
 
 ASIENTOS = [
     {"Numero": "1", "Fecha": 20250115, "Descripcion": "FV/2025/00001-CLIENTE UNO",
@@ -55,8 +55,8 @@ def recorrido(motor: str) -> None:
         "SELECT name AS table_name FROM sqlite_master WHERE type='table'"
     ).fetchall()
     nombres = sorted(f["table_name"] for f in tablas if not str(f["table_name"]).startswith("sqlite_"))
-    esperadas = sorted(["apuntes", "calc_cache", "ejecuciones", "empresas", "permisos", "tokens",
-                        "usuarios"])
+    esperadas = sorted(["apuntes", "calc_cache", "ejecuciones", "empresas", "intentos", "permisos",
+                        "tokens", "trabajos", "usuarios"])
     comprobar("tablas creadas", nombres, esperadas)
 
     # --- empresas y usuarios ---
@@ -158,6 +158,53 @@ def recorrido(motor: str) -> None:
     con.commit()
     comprobar("resumen ignora lo antiguo", sorted(r["modulos"] for r in db.resumen_ejecuciones(dias=30)),
               ["fiscal", "pyg"])
+
+    # --- intentos de acceso (Fase 2: contador en la base, no en memoria del proceso) ---
+    print("  intentos de acceso")
+    db.limpiar_intentos("pin:6091")
+    comprobar("sin intentos", db.contar_intentos("pin:6091", 900), 0)
+    db.registrar_intento("pin:6091")
+    db.registrar_intento("pin:6091")
+    db.registrar_intento("login:cliente@ejemplo.com")
+    comprobar("dos intentos con el PIN", db.contar_intentos("pin:6091", 900), 2)
+    comprobar("el contador es por clave", db.contar_intentos("login:cliente@ejemplo.com", 900), 1)
+    con.execute("INSERT INTO intentos (clave, instante) VALUES (?, ?)",
+                ("pin:6091", "2000-01-01T00:00:00+00:00"))
+    con.commit()
+    comprobar("la ventana deja fuera lo antiguo", db.contar_intentos("pin:6091", 900), 2)
+    # Ventana de 40 años: el intento del año 2000 vuelve a contar (comprueba que el dato está
+    # guardado y que lo que filtra es la ventana, no el borrado).
+    comprobar("con una ventana amplia cuenta todo", db.contar_intentos("pin:6091", 40 * 365 * 86400), 3)
+    comprobar("limpiar intentos", (db.limpiar_intentos("pin:6091"), db.contar_intentos("pin:6091", 900))[1], 0)
+    con.execute("INSERT INTO intentos (clave, instante) VALUES (?, ?)",
+                ("login:antiguo@ejemplo.com", "2000-01-01T00:00:00+00:00"))
+    con.commit()
+    db.registrar_intento("login:reciente@ejemplo.com")
+    comprobar("limpiar caducados se lleva sólo lo antiguo", db.limpiar_intentos_caducados(86400), 1)
+    comprobar("y deja lo reciente", db.contar_intentos("login:reciente@ejemplo.com", 900), 1)
+
+    # --- trabajos en segundo plano (su estado también vive en la base) ---
+    print("  trabajos en segundo plano")
+    t = trabajos.Trabajo(id="prueba-1", tipo="carga", cod_empresa="6091", year=2025,
+                         email="cliente@ejemplo.com")
+    t.pasos.append({"ejercicio": 2025, "estado": "hecho", "n_asientos": 2})
+    trabajos.guardar(t)
+    leido_t = trabajos.obtener("prueba-1")
+    comprobar("trabajo recuperado", (leido_t.tipo, leido_t.year, leido_t.estado),
+              ("carga", 2025, "en_curso"))
+    comprobar("sus pasos viajan en JSON", leido_t.pasos[0]["n_asientos"], 2)
+    comprobar("aparece en el listado", [x["id"] for x in trabajos.listar(10)], ["prueba-1"])
+    comprobar("es el trabajo en curso de ese ejercicio",
+              (trabajos.trabajo_en_curso("6091", 2025) or leido_t).id, "prueba-1")
+    leido_t.estado, leido_t.mensaje, leido_t.fin = "hecho", "Datos actualizados", leido_t.inicio + 2
+    trabajos.guardar(leido_t)
+    comprobar("se actualiza sin duplicar",
+              (trabajos.obtener("prueba-1").estado, len(trabajos.listar(10))), ("hecho", 1))
+    comprobar("ya no está en curso", trabajos.trabajo_en_curso("6091", 2025), None)
+    comprobar("marcar interrumpidos", (trabajos.marcar_interrumpidos(),), (0,))
+    trabajos.guardar(trabajos.Trabajo(id="prueba-2", tipo="informe", cod_empresa="6091", year=2024))
+    comprobar("uno en curso se marca", trabajos.marcar_interrumpidos(), 1)
+    comprobar("y queda dicho", trabajos.obtener("prueba-2").mensaje, trabajos.INTERRUMPIDO)
     comprobar("resumen incluye lo antiguo si la ventana es amplia",
               sorted(r["modulos"] for r in db.resumen_ejecuciones(dias=36500)),
               ["fiscal", "memoria", "pyg"])

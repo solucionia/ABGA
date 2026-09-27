@@ -15,12 +15,14 @@ Comprueba lo que de verdad importa del cambio:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
+from pathlib import Path
 
 import httpx
-import os
-from pathlib import Path
+
+
 def clave_admin() -> str:
     """Contraseña del usuario interno de ABGA: del entorno o de `.env`, nunca escrita aquí."""
     v = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "")
@@ -135,7 +137,7 @@ def main() -> None:
             print(f"  aviso: el panel devolvió HTTP {r.status_code} ({j.get('error')}) — puede faltar caché de ejercicios previos")
         else:
             d = j["data"]
-            check(set(["kpis", "mensual", "comparativa", "avisos"]).issubset(d.keys()),
+            check({"kpis", "mensual", "comparativa", "avisos"}.issubset(d.keys()),
                   "el panel trae KPIs, series y comparativa")
             check(len(d["mensual"]) == 12, "la serie mensual tiene 12 meses")
             check(isinstance(d["kpis"]["totalIngresos"], (int, float)), "los KPIs son numéricos")

@@ -3,6 +3,7 @@
 Uso: /opt/scrapling/venv/bin/python backend/scripts/captura_panel.py
 """
 import asyncio
+import contextlib
 import glob
 import sys
 
@@ -29,10 +30,8 @@ async def main() -> None:
             await page.click("#btn-entrar")
 
         # espera el panel
-        try:
+        with contextlib.suppress(Exception):
             await page.wait_for_selector("#kpi-grid .kpi", timeout=90000)
-        except Exception:
-            pass
         await page.wait_for_timeout(2500)
         await page.screenshot(path=SALIDA, full_page=True)
 

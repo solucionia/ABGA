@@ -29,7 +29,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "backend"))
 
-from app import modulos                                   # noqa: E402
+from app import modulos  # noqa: E402
 from app.ledger import fmt, fmt_pct, lineas_de_asientos, saldos_por_cuenta  # noqa: E402
 
 TOLERANCIA = 0.02
@@ -252,7 +252,7 @@ def verificar_empresa(nombre: str, cod: str, year: int, asientos: list[dict], mo
               f"nº de movimientos == recalculado ({esperado['n_movimientos']})")
     comprobar(datos["n_otros"] == esperado["n_otros"],
               f"nº de pagos/liquidaciones == recalculado ({esperado['n_otros']})")
-    for q, e in zip(datos["porTrimestre"], esperado["porTrimestre"]):
+    for q, e in zip(datos["porTrimestre"], esperado["porTrimestre"], strict=False):
         comprobar(cerca(q["trabajo"], e["trabajo"]) and cerca(q["profesionales"], e["profesionales"])
                   and cerca(q["otras"], e["otras"]) and q["nMovimientos"] == e["n"],
                   f"{q['trimestre']}T: trabajo {fmt(e['trabajo'])}, profesionales {fmt(e['profesionales'])}, "

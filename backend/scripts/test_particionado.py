@@ -131,8 +131,9 @@ def instalar_erp_falso(cli: apicon.ClienteApicon, asientos: list[dict], anio: in
 def caso(nombre: str, asientos: list[dict], anio: int, *, orden_estable: bool = True,
          exigir_completo: bool = True, filtro_incompleto: bool = False) -> None:
     cli = apicon.ClienteApicon(cargar_config())
-    stats = instalar_erp_falso(cli, asientos, anio, orden_estable=orden_estable,
-                               filtro_incompleto=filtro_incompleto)
+    # instala el ERP falso en la instancia (por eso importa la llamada, no su resultado)
+    instalar_erp_falso(cli, asientos, anio, orden_estable=orden_estable,
+                       filtro_incompleto=filtro_incompleto)
     cli._pagina_rango_original = cli._pagina_rango
     cache_previo = apicon.cache.guardar_apuntes
     apicon.cache.guardar_apuntes = lambda *a, **k: None  # no ensuciar la caché real

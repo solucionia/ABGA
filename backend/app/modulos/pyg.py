@@ -17,11 +17,21 @@ el dashboard nuevo.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (Linea, MESES, a_float, anio_de, fmt, fmt_pct, mes_de, num, por_mes,
-                      saldos_por_cuenta, serie_mensual, suma_acreedor, suma_deudor)
+from ..ledger import (
+    Linea,
+    anio_de,
+    fmt,
+    fmt_pct,
+    num,
+    saldos_por_cuenta,
+    serie_mensual,
+    suma_acreedor,
+    suma_deudor,
+)
 
 AZUL_FILA = "#eef4fd"
 

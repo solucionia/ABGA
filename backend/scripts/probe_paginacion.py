@@ -5,7 +5,6 @@ para no volver a pedirla. No imprime credenciales.
 """
 from __future__ import annotations
 
-import json
 import sys
 import time
 from pathlib import Path
@@ -85,7 +84,7 @@ def main() -> None:
         (RAW / f"A_top5000_{EMPRESA}_{YEAR}.json").write_bytes(r.content)
 
     # B) ¿el filtro de Fecha admite entero YYYYMMDD?
-    for filtro in (f"Fecha ge 20250101", f"Fecha ge '20250101'", f"Fecha eq 20250115"):
+    for filtro in ("Fecha ge 20250101", "Fecha ge '20250101'", "Fecha eq 20250115"):
         r = pedir("/api/apuntes/", {"$filter": filtro, "$top": "5"}, cab, f"B filtro {filtro}")
         if r.status_code == 200:
             print("   ", sobresalientes(r))

@@ -20,12 +20,24 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from typing import Any
 
 from .. import informes as inf
-from ..ledger import (Linea, comprobar_cuadre, fmt, fmt_pct, mes_de, nombre_tercero,
-                      por_mes, por_tercero, saldos_por_cuenta, suma_acreedor, suma_deudor)
+from ..ledger import (
+    Linea,
+    comprobar_cuadre,
+    fmt,
+    fmt_pct,
+    mes_de,
+    nombre_tercero,
+    por_mes,
+    por_tercero,
+    saldos_por_cuenta,
+    suma_acreedor,
+    suma_deudor,
+)
 from . import conciliacion as mod_conciliacion
 from . import duplicados as mod_duplicados
 from . import pyg as mod_pyg
@@ -238,7 +250,7 @@ def _r_saltos_numeracion(c: dict) -> dict:
     saltos = []
     for serie, numeros in series.items():
         orden = sorted(set(numeros))
-        for a, b in zip(orden, orden[1:]):
+        for a, b in zip(orden, orden[1:], strict=False):
             if b - a > 1:
                 saltos.append({"serie": serie, "desde": a, "hasta": b, "faltan": b - a - 1})
     total = sum(s["faltan"] for s in saltos)
@@ -321,7 +333,7 @@ def _r_gastos_personal(c: dict) -> dict:
                     recomendacion="Comprobar si la empresa no tiene plantilla o si faltan nóminas.")
     meses_ok = _meses_con_movimiento(c["lineas"], prefijos)
     ultimo = max((mes_de(l.fecha) for l in c["lineas"]), default=0)
-    esperados = {m for m in range(1, (ultimo or 12) + 1)}
+    esperados = set(range(1, (ultimo or 12) + 1))
     faltan = sorted(esperados - meses_ok)
     if not faltan:
         return _res(OK, f"Gastos de personal contabilizados en los {len(esperados)} meses del ejercicio.")
@@ -333,9 +345,7 @@ def _r_gastos_personal(c: dict) -> dict:
 def _r_gastos_signo(c: dict) -> dict:
     contrarios = []
     for cuenta, s in c["saldos"].items():
-        if cuenta.startswith(("60", "62", "63", "64", "68")) and s.acreedor > 0.01 and s.deudor < -0.01:
-            contrarios.append([cuenta, round(s.deudor, 2)])
-        elif cuenta.startswith("70") and s.deudor > 0.01:
+        if cuenta.startswith(("60", "62", "63", "64", "68")) and s.acreedor > 0.01 and s.deudor < -0.01 or cuenta.startswith("70") and s.deudor > 0.01:
             contrarios.append([cuenta, round(s.deudor, 2)])
     if not contrarios:
         return _res(OK, "Las cuentas de gasto son deudoras y las de ingreso acreedoras.")

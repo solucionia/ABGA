@@ -66,6 +66,27 @@ CREATE TABLE IF NOT EXISTS ejecuciones (
     importes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ejecuciones_emp ON ejecuciones (cod_empresa, instante DESC);
+CREATE TABLE IF NOT EXISTS intentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    clave TEXT NOT NULL,
+    instante TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_intentos_clave ON intentos (clave, instante DESC);
+CREATE TABLE IF NOT EXISTS trabajos (
+    id TEXT PRIMARY KEY,
+    tipo TEXT NOT NULL,
+    cod_empresa TEXT NOT NULL,
+    ejercicio INTEGER NOT NULL,
+    estado TEXT NOT NULL,
+    mensaje TEXT,
+    progreso REAL NOT NULL DEFAULT 0,
+    pasos TEXT NOT NULL DEFAULT '[]',
+    resultado TEXT NOT NULL DEFAULT '{}',
+    inicio REAL NOT NULL,
+    fin REAL,
+    email TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_trabajos_inicio ON trabajos (inicio DESC);
 """
 
 # Columnas añadidas después de que existieran las tablas. Se aplican una a una y si la columna ya
@@ -81,10 +102,7 @@ def _tiene_columna(con, tabla: str, columna: str) -> bool:
         fila = con.execute("SELECT 1 FROM information_schema.columns "
                            "WHERE table_name=? AND column_name=?", (tabla, columna)).fetchone()
         return fila is not None
-    for fila in con.execute(f"PRAGMA table_info({tabla})").fetchall():
-        if fila[1] == columna:
-            return True
-    return False
+    return any(fila[1] == columna for fila in con.execute(f"PRAGMA table_info({tabla})").fetchall())
 
 
 def migrar(con) -> None:

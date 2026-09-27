@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pathlib
 import subprocess
-import sys
 
 RAIZ = pathlib.Path(__file__).resolve().parents[2]
 ENV = RAIZ / ".env"
