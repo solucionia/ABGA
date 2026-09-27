@@ -141,6 +141,11 @@ class Regla:
 
 # ------------------------------------------------------------------ utilidades
 
+def _n_comprobaciones(n: int) -> str:
+    """«1 comprobación» / «7 comprobaciones». El informe va al cliente: el plural se nota."""
+    return f"{n} comprobación" if n == 1 else f"{n} comprobaciones"
+
+
 def _res(nivel: str, detalle: str, *, importe: float | None = None, recomendacion: str = "",
          datos: Sequence[Any] = (), magnitud: dict[str, Any] | None = None) -> dict[str, Any]:
     """`importe` es SIEMPRE dinero (es lo que suma el importe en riesgo). Las medidas que no son
@@ -1438,8 +1443,13 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
     r = datos["resumen"]
     filtro = datos.get("filtro") or {}
     familia_f, nivel_f = filtro.get("familia"), filtro.get("nivel")
-    global_aviso = {ALERTA: ("error", f"{r['n_rojo']} comprobaciones en rojo requieren actuación."),
-                    AVISO: ("alerta", f"{r['n_naranja']} comprobaciones en naranja conviene revisarlas."),
+    n_rojo, n_naranja = r["n_rojo"], r["n_naranja"]
+    global_aviso = {ALERTA: ("error", f"{_n_comprobaciones(n_rojo)} en rojo "
+                                       + ("requiere actuación." if n_rojo == 1
+                                          else "requieren actuación.")),
+                    AVISO: ("alerta", f"{_n_comprobaciones(n_naranja)} en naranja "
+                                      + ("conviene revisarla." if n_naranja == 1
+                                         else "conviene revisarlas.")),
                     OK: ("ok", "Todas las comprobaciones evaluables han salido correctas."),
                     NO_EVALUABLE: ("info", "Los apuntes no permiten evaluar ninguna comprobación.")}[r["nivel_global"]]
 
@@ -1472,8 +1482,9 @@ def informe_html(datos: dict[str, Any], ctx: dict[str, Any]) -> str:
         if not lista:
             continue
         pendientes = [h for h in lista if h["nivel"] != OK]
-        nota = (f"{len(lista)} comprobaciones, {len(pendientes)} con algo que revisar."
-                if pendientes else f"{len(lista)} comprobaciones, todas correctas.")
+        cuantas = _n_comprobaciones(len(lista))
+        nota = (f"{cuantas}, {len(pendientes)} con algo que revisar."
+                if pendientes else f"{cuantas}, todas correctas.")
         partes.append(inf.seccion(titulo, _tabla_familia(lista), nota=nota))
 
     partes.append(inf.seccion("Cómo funciona este informe", inf.aviso(

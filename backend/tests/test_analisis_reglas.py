@@ -77,6 +77,22 @@ def test_los_umbrales_nuevos_llegan_a_su_regla() -> None:
     assert por_defecto["nivel"] == mod.OK and ajustado["nivel"] == mod.AVISO
 
 
+def test_el_informe_no_dice_1_comprobaciones() -> None:
+    """La familia laboral tiene **una** comprobación: el informe va al cliente y ahí se nota.
+
+    Lo destapó el otro chat mirando el informe desplegado («1 comprobaciones», en la nota de la
+    familia). Aquí se comprueba sobre el documento entero, que es donde se ve.
+    """
+    lineas = lineas_de_asientos(sintetico.anio(2024))
+    datos = mod.calcular({2025: lineas, 2024: lineas}, {**CTX, "umbrales_empresa": {}})
+    html = mod.informe_html(datos, {**CTX, "empresa": "Empresa sintética, S.L."})
+    assert "1 comprobaciones" not in html
+    assert "1 comprobación," in html        # la nota de la familia laboral
+    assert mod._n_comprobaciones(1) == "1 comprobación"
+    assert mod._n_comprobaciones(0) == "0 comprobaciones"
+    assert mod._n_comprobaciones(50) == "50 comprobaciones"
+
+
 # ---------------------------------------------------------------- contables
 
 def test_existencias_en_negativo() -> None:
