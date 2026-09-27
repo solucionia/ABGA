@@ -1,0 +1,38 @@
+name: CI
+
+# Lo que corre aquí NO toca el ERP ni usa datos del cliente: la suite fabrica su propio `.env` y
+# simula el ERP, y las pruebas que necesitan los fixtures reales (marcadas `datos_reales`) se
+# omiten solas cuando no están. Un repositorio clonado no tiene ni `.env` ni `fixtures/`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Dependencias
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Estilo y errores lógicos (ruff)
+        run: ruff check backend/app backend/tests backend/scripts
+
+      - name: Tipos (mypy)
+        run: mypy
+
+      - name: Pruebas
+        run: pytest -q --cov=app --cov-report=term-missing
+
+      - name: Ningún secreto versionado
+        run: python backend/scripts/verificar_secretos.py
