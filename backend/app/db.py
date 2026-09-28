@@ -181,6 +181,16 @@ def _permisos_brutos(email: str) -> set[str]:
     return {str(f["cod_empresa"]) for f in filas}
 
 
+def permisos_de(email: str) -> list[str]:
+    """Los códigos de empresa que ese usuario tiene dados de alta, sin el atajo de los internos.
+
+    `empresas_de` devuelve las 391 para un interno, que es lo que quiere para abrir empresas; aquí
+    hace falta lo contrario: lo que está escrito en la tabla, para sumar permisos sin reescribirlos
+    todos al editar un usuario.
+    """
+    return sorted(_permisos_brutos(email))
+
+
 def definir_empresas(email: str, codigos: list[str]) -> dict[str, list[str]]:
     """Deja al usuario **exactamente** con esas empresas: da las que faltan y quita las que sobran.
 

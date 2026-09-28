@@ -78,15 +78,21 @@ def test_el_cliente_solo_ve_sus_empresas(portal: Portal) -> None:
 def test_los_informes_internos_no_salen_al_cliente(portal: Portal) -> None:
     portal.entrar_como_cliente()
     assert portal.informe("duplicados").status_code == 403
-    nombres = [m["nombre"] for m in portal.api.get("/api/modulos").json()["modulos"]]
+    cuerpo = portal.api.get("/api/modulos").json()
+    nombres = [m["nombre"] for m in cuerpo["modulos"]]
     assert "duplicados" not in nombres
     assert "pyg" in nombres
+    # Y además se dice cuáles se ocultan: sin ese complemento el frontal no sabe qué pantallas
+    # quitar del menú de un cliente y le quedaba «Duplicados» a la vista.
+    assert cuerpo["ocultos"] == ["duplicados"]
 
 
 def test_el_usuario_interno_si_ve_los_informes_internos(portal: Portal) -> None:
     portal.entrar_como_admin()
-    nombres = [m["nombre"] for m in portal.api.get("/api/modulos").json()["modulos"]]
+    cuerpo = portal.api.get("/api/modulos").json()
+    nombres = [m["nombre"] for m in cuerpo["modulos"]]
     assert "duplicados" in nombres
+    assert cuerpo["ocultos"] == [], "al interno no se le oculta nada"
     r = portal.informe("duplicados")
     assert r.status_code == 200 and r.json()["html"].lstrip().startswith("<div")
 

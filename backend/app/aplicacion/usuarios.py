@@ -55,22 +55,45 @@ def guardar(*, email: str, nombre: str = "", rol: str = "cliente", activo: bool 
         generada = auth.password_generada()
         password = generada
 
+    # Permisos: el código de empresa se comprueba aquí, no en el login. Un código inventado deja una
+    # cuenta que no puede entrar en ninguna parte, y una cuenta de cliente sin empresa no sirve para
+    # nada (el acceso exige el número). Al EDITAR, lo que se pasa se AÑADE: quitar es cosa de
+    # `asignar_empresas`, que es la llamada explícita de la pantalla de permisos.
+    codigos: list[str] | None = None
+    if empresas is not None:
+        codigos = [str(c).strip() for c in empresas if str(c).strip()]
+    if previo is None and rol == "cliente" and not codigos:
+        raise EntradaInvalida("Una cuenta de cliente necesita al menos un número de empresa: "
+                              "sin él no puede entrar.")
+    if codigos:
+        conocidas = {str(e["cod_empresa"]) for e in db.listar_empresas()}
+        desconocidos = [c for c in codigos if c not in conocidas]
+        if desconocidos:
+            raise EntradaInvalida("No está en la asesoría el código de empresa: "
+                                  + ", ".join(desconocidos) + ".")
+    if codigos is not None and previo is not None:
+        codigos = sorted({*db.permisos_de(email), *codigos})
+
     if previo is None:
-        db.crear_usuario(email, nombre, auth.hash_password(password), rol,
-                         empresas=[str(c) for c in (empresas or [])])
+        db.crear_usuario(email, nombre, auth.hash_password(password), rol, empresas=codigos)
     else:
         db.actualizar_usuario(email, nombre=nombre, rol=rol, activo=activo)
         if password:
             db.cambiar_password(email, auth.hash_password(password))
 
+    # Los permisos se escriben ANTES de mirar el usuario: si no, la respuesta devuelve los de
+    # antes y el panel enseña una lista de empresas que no es la que acaba de guardar.
+    cambio: dict[str, list[str]] = {}
+    if empresas is not None:
+        cambio = db.definir_empresas(email, codigos or [])
+
     resultado = ResultadoUsuario(
         usuario=db.usuario(email) or {},
         password=generada,
+        cambio=cambio,
         aviso="Contraseña generada; no se vuelve a mostrar. Dale las credenciales al cliente."
               if generada else "",
     )
-    if empresas is not None:
-        resultado.cambio = db.definir_empresas(email, [str(c) for c in empresas])
 
     db.registrar_ejecucion(cod_empresa="", ejercicio=None, modulos="alta_cliente", origen="interno",
                            email=actor, segundos=0.0, estado="ok", desde_cache=False,

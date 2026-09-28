@@ -196,6 +196,7 @@ class RespuestaEliminado(RespuestaOk):
 
 class RespuestaModulos(RespuestaOk):
     modulos: list[dict[str, Any]]
+    ocultos: list[str] = Field(default_factory=list)
     menus: list[dict[str, Any]]
     pendientes: list[dict[str, Any]]
     ejercicios: list[int]

@@ -68,6 +68,9 @@ ABGA.registrar('ajustes', async function (ctx) {
             email: u.email,
             rol: u.rol === 'interno' ? 'Equipo de ABGA' : 'Cuenta de cliente',
             clientes: (u.empresas || []).length,
+            // Los códigos, que es lo que el cliente teclea para entrar. Con más de seis no se
+            // listan (el interno tiene los 391 de la asesoría): se queda en el recuento.
+            codigos: (u.empresas || []).length <= 6 ? (u.empresas || []).join(' · ') : '',
             estado: u.activo ? 'Activo' : 'Inactivo',
             // La columna del hub dice «Último acceso», pero la plataforma sólo guarda el alta de
             // la cuenta: se pinta la fecha real y se propone cambiar el encabezado.

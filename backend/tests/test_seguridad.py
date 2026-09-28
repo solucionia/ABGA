@@ -6,7 +6,7 @@ si alguien vuelve a abrirlos, esta suite lo dice.
 
 from __future__ import annotations
 
-from tests.conftest import ADMIN, CLAVE_ADMIN, EMPRESA, ENTORNO_DE_PRUEBA, Portal, escribir_env
+from tests.conftest import ADMIN, CLAVE_ADMIN, EMPRESA, EMPRESA_AJENA, ENTORNO_DE_PRUEBA, Portal, escribir_env
 
 # ---------------------------------------------------------------- CORS
 
@@ -108,3 +108,50 @@ def test_el_alta_de_un_usuario_que_ya_existe_no_lo_pisa(portal: Portal) -> None:
     assert r.json().get("password") in (None, ""), "sin contraseña nueva no se genera otra"
     assert db.hash_de("persona@abga.example") == hash_antes
     assert auth.verificar_password("lo-que-sea", hash_antes) is False
+
+
+# ---------------------------------------------------------------- altas de cliente con su empresa
+
+def test_un_cliente_no_se_da_de_alta_sin_su_empresa(portal: Portal) -> None:
+    """El acceso exige el número de empresa: un cliente sin empresa es una cuenta que no sirve.
+
+    Antes se creaba igual (con la lista vacía) y luego el login le devolvía 403 a cualquier
+    código: el cliente tenía contraseña y no podía entrar en ningún sitio.
+    """
+    portal.entrar_como_admin()
+    r = portal.api.post("/api/interno/usuarios", json={"email": "sin-empresa@abga.example",
+                                                       "nombre": "Sin Empresa", "rol": "cliente",
+                                                       "empresas": []})
+    assert r.status_code == 400, r.text
+    assert "número de empresa" in r.json()["error"]
+    from app import db
+    assert db.usuario("sin-empresa@abga.example") is None, "no se crea la cuenta a medias"
+
+
+def test_un_codigo_de_empresa_inventado_no_se_admite(portal: Portal) -> None:
+    """Un tecleo erróneo deja permisos sobre una empresa que no existe: se rechaza en el alta."""
+    portal.entrar_como_admin()
+    r = portal.api.post("/api/interno/usuarios", json={"email": "inventado@abga.example",
+                                                       "nombre": "Código Inventado",
+                                                       "rol": "cliente", "empresas": ["9999"]})
+    assert r.status_code == 400, r.text
+    assert "9999" in r.json()["error"]
+    from app import db
+    assert db.usuario("inventado@abga.example") is None
+
+
+def test_editar_un_usuario_le_añade_la_empresa_no_se_la_quita(portal: Portal) -> None:
+    """El alta con código AÑADE acceso; quitar es cosa de la pantalla de permisos.
+
+    Si editar pisara la lista, volver a dar de alta a un cliente con una sola empresa le
+    borraría las demás sin advertir.
+    """
+    portal.entrar_como_admin()
+    portal.api.post("/api/interno/usuarios", json={"email": "multi@abga.example",
+                                                   "nombre": "Multi", "rol": "cliente",
+                                                   "empresas": [EMPRESA]})
+    r = portal.api.post("/api/interno/usuarios", json={"email": "multi@abga.example",
+                                                       "nombre": "Multi", "rol": "cliente",
+                                                       "empresas": [EMPRESA_AJENA]})
+    assert r.status_code == 200, r.text
+    assert set(r.json()["usuario"]["empresas"]) == {EMPRESA, EMPRESA_AJENA}

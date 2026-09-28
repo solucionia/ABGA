@@ -168,7 +168,7 @@ window.ABGA = (function () {
 
   var estado = {
     usuario: null, interno: false, empresas: [], empresa: null,
-    ejercicio: null, ejercicioInicio: null, modulos: [], listo: false,
+    ejercicio: null, ejercicioInicio: null, modulos: [], ocultos: [], listo: false,
     // Qué hay ya leído del ERP (empresa → ejercicios en caché). Es lo que permite abrir el hub
     // sin disparar cientos de lecturas contra el ERP de ABGA: si el ejercicio no está, se dice.
     cache: {}, ttl: 43200
@@ -418,7 +418,14 @@ window.ABGA = (function () {
            : (estado.ejercicioInicio || new Date().getFullYear() - 1));
       estado.annosDisponibles = listaAnnos;
     }
-    try { estado.modulos = (await api.modulos()).modulos || []; } catch (fallo) { estado.modulos = []; }
+    try {
+      // `ocultos` es la lista de módulos que la plataforma no enseña a este usuario (los internos
+      // para un cliente). Sin ella el menú salía calculado desde `modulos`, que a un cliente ya le
+      // viene filtrado: la lista de internos salía vacía y le quedaba «Duplicados» a la vista.
+      var catalogo = await api.modulos();
+      estado.modulos = catalogo.modulos || [];
+      estado.ocultos = catalogo.ocultos || [];
+    } catch (fallo) { estado.modulos = []; estado.ocultos = []; }
     estado.listo = true;
     return estado;
   }
@@ -479,17 +486,19 @@ window.ABGA = (function () {
       }
       // El menú del hub no es el catálogo de módulos de la plataforma: es su propia navegación.
       // Lo único que decide la plataforma es qué se puede abrir: `envios` no tiene endpoint
-      // todavía, y `duplicados` y `ajustes` son del panel interno de ABGA (`interno: true`).
-      var internos = (estado.modulos || []).filter(function (m) { return m.interno; })
-        .map(function (m) { return m.nombre; });
-      var abiertas = MOCK.ENTREGADOS.slice();
+      // todavía, y lo que la plataforma declara en `ocultos` —`duplicados` para un cliente, que es
+      // de uso interno de ABGA— más `ajustes`, que es el panel del despacho, no se le enseñan.
+      // OJO: antes el filtro salía de `estado.modulos`, que a un cliente ya llega sin los internos:
+      // la lista de ocultos salía vacía y el cliente veía «Duplicados» en el menú.
+      var ocultas = (estado.ocultos || []).slice();
+      if (!estado.interno) ocultas.push('ajustes');
+      var seOculta = function (clave) { return ocultas.indexOf(clave) >= 0; };
+      reemplazar(MOCK.ENTREGADOS, MOCK.ENTREGADOS.filter(function (k) {
+        return k !== 'envios' && !seOculta(k);
+      }));
       if (!estado.interno) {
-        abiertas = abiertas.filter(function (k) {
-          return internos.indexOf(k) < 0 && k !== 'ajustes';   // ajustes es del panel interno
-        });
+        reemplazar(MOCK.MODULOS, MOCK.MODULOS.filter(function (m) { return !seOculta(m.key); }));
       }
-      abiertas = abiertas.filter(function (k) { return k !== 'envios'; });
-      reemplazar(MOCK.ENTREGADOS, abiertas);
       // La cabecera del hub dice si hay ERP y cuándo se leyó por última vez: es la lectura más
       // reciente que hay en la caché, no una hora inventada.
       var ultimaLectura = 0;

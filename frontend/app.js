@@ -571,10 +571,18 @@ document.addEventListener('DOMContentLoaded', () => {
   $('form-alta-usuario').addEventListener('submit', async (e) => {
     e.preventDefault();
     const rol = $('alta-us-rol').value === 'Interno ABGA' ? 'interno' : 'cliente';
-    const r = await api('/api/interno/usuarios', { method: 'POST', body: JSON.stringify({ email: $('alta-us-email').value, nombre: $('alta-us-nombre').value, rol, empresas: [] }) });
+    // El número de empresa es lo que el cliente teclea para entrar: sin él la cuenta creada no
+    // puede abrir ninguna contabilidad, así que no se da de alta a medias.
+    const empresa = $('alta-us-empresa').value.trim();
+    if (rol === 'cliente' && !/^\d{3,6}$/.test(empresa)) {
+      toast('Una cuenta de cliente necesita su número de empresa', 'error'); return;
+    }
+    const r = await api('/api/interno/usuarios', { method: 'POST', body: JSON.stringify({
+      email: $('alta-us-email').value, nombre: $('alta-us-nombre').value, rol,
+      empresas: rol === 'cliente' ? [empresa] : [] }) });
     if (r.status === 'ok') {
       $('banner-usuario').hidden = false;
-      $('banner-usuario-texto').innerHTML = `Usuario ${esc(r.email)} creado (${esc(r.rol)}). Contraseña temporal: <strong>${esc(r.password)}</strong> — cámbiala en el primer acceso.`;
+      $('banner-usuario-texto').innerHTML = `Usuario ${esc(r.email)} creado (${esc(r.rol)})${rol === 'cliente' ? ` · empresa ${esc(empresa)}` : ''}. Contraseña temporal: <strong>${esc(r.password)}</strong> — cámbiala en el primer acceso.`;
       e.target.reset(); await cargarInterno();
     } else toast(r.error || 'Error', 'error');
   });

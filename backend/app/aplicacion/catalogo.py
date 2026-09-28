@@ -33,11 +33,21 @@ def empresas_visibles(us: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def modulos_visibles(us: dict[str, Any]) -> dict[str, Any]:
-    """Módulos que puede pedir ese usuario, con los menús y los ejercicios configurados."""
+    """Módulos que puede pedir ese usuario, con los menús y los ejercicios configurados.
+
+    `ocultos` es la lista de los que **no** puede ver. No es redundante: a un cliente
+    `/api/modulos` no le enseña los internos, así que sin este complemento el frontal no sabe qué
+    pantallas tienen que dejar de aparecer en su menú — y le salía «Duplicados», que ABGA no
+    quiere que el cliente vea nunca.
+    """
     interno = auth.es_interno(us)
     salida = []
+    ocultos = []
     for d in modulos.listar_todos():
-        if not d.disponible or (d.interno and not interno):
+        if d.interno and not interno:
+            ocultos.append(d.nombre)
+            continue
+        if not d.disponible:
             continue
         salida.append({
             "nombre": d.nombre, "titulo": d.titulo, "interno": d.interno,
@@ -45,6 +55,7 @@ def modulos_visibles(us: dict[str, Any]) -> dict[str, Any]:
         })
     return {
         "modulos": salida,
+        "ocultos": ocultos,
         "menus": [{"clave": c, "titulo": t} for c, t in modulos.MENUS],
         "pendientes": [{"clave": c, "titulo": t, "menu": m} for c, t, m in modulos.PENDIENTES],
         "ejercicios": list(cargar_config().ejercicios_disponibles),

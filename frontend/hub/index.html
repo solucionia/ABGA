@@ -397,7 +397,7 @@ input,select,textarea,button{font-family:inherit;}
     <header style="height:56px;position:sticky;top:0;z-index:25;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 20px;">
       <div style="position:relative;flex:1;max-width:420px;">
         <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="position:absolute;left:11px;top:10px;color:var(--muted);"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5"></path></svg>
-        <input type="search" aria-label="Buscar cliente" placeholder="Buscar cliente por nombre o NIF" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" sc-camel-on-focus="{{ onSearchFocus }}" sc-camel-on-blur="{{ onSearchBlur }}" style="width:100%;box-sizing:border-box;height:36px;padding:0 12px 0 34px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;outline:none;transition:border-color .15s ease,box-shadow .15s ease;" style-focus="border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);">
+        <input type="search" aria-label="Buscar cliente" placeholder="Buscar cliente por nombre, NIF o código" value="{{ search }}" sc-camel-on-change="{{ setSearch }}" sc-camel-on-focus="{{ onSearchFocus }}" sc-camel-on-blur="{{ onSearchBlur }}" style="width:100%;box-sizing:border-box;height:36px;padding:0 12px 0 34px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;outline:none;transition:border-color .15s ease,box-shadow .15s ease;" style-focus="border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);">
         <sc-if value="{{ showSearch }}" hint-placeholder-val="{{ false }}">
           <div style="position:absolute;top:42px;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);padding:6px;animation:slideDown .18s ease both;z-index:40;">
             <sc-for list="{{ searchResults }}" as="r" hint-placeholder-count="3">
@@ -1835,6 +1835,7 @@ input,select,textarea,button{font-family:inherit;}
                       <div><label for="aj-nn" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">Nombre</label><input id="aj-nn" type="text" value="{{ ajNewD.nombre }}" sc-camel-on-change="{{ ajSetN }}" style="width:100%;box-sizing:border-box;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;" style-focus="border-color:var(--accent);outline:none;"></div>
                       <div><label for="aj-ne" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">Correo</label><input id="aj-ne" type="email" value="{{ ajNewD.email }}" sc-camel-on-change="{{ ajSetE }}" style="width:100%;box-sizing:border-box;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;" style-focus="border-color:var(--accent);outline:none;"></div>
                       <div><label for="aj-nr" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">Rol</label><sc-raw-select id="aj-nr" value="{{ ajNewD.rol }}" sc-camel-on-change="{{ ajSetR }}" style="width:100%;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;"><option>Cliente</option><option>Equipo de ABGA</option></sc-raw-select></div>
+                      <div><label for="aj-nnc" style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">Número de empresa</label><input id="aj-nnc" type="text" inputmode="numeric" autocomplete="off" placeholder="6091" value="{{ ajNewD.empresa }}" sc-camel-on-change="{{ ajSetC }}" style="width:100%;box-sizing:border-box;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;" style-focus="border-color:var(--accent);outline:none;"></div>
                       <div style="display:flex;gap:6px;"><button sc-camel-on-click="{{ ajCancelNew }}" style="flex:1;height:38px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12.5px;cursor:pointer;">Cancelar</button><button sc-camel-on-click="{{ ajCreate }}" disabled="{{ ajNewBad }}" style="flex:1;height:38px;border:none;border-radius:6px;background:var(--btn);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;" style-disabled="opacity:.45;cursor:not-allowed;">Crear</button></div>
                     </div>
                   </sc-if>
@@ -1842,7 +1843,7 @@ input,select,textarea,button{font-family:inherit;}
                     <sc-raw-thead><sc-raw-tr><sc-raw-th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);">Usuario</sc-raw-th><sc-raw-th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);">Rol</sc-raw-th><sc-raw-th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);">Clientes</sc-raw-th><sc-raw-th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);">Estado</sc-raw-th><sc-raw-th style="text-align:right;padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);">Alta de la cuenta</sc-raw-th></sc-raw-tr></sc-raw-thead>
                     <sc-raw-tbody><sc-for list="{{ ajUsers }}" as="u" hint-placeholder-count="4"><sc-raw-tr style="animation:fadeIn .3s ease both;">
                       <sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:center;gap:10px;"><span style="width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent-strong);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">{{ u.ini }}</span><div><div style="font-weight:500;">{{ u.nombre }}</div><div style="font-size:11px;color:var(--muted);">{{ u.email }}</div></div></div></sc-raw-td>
-                      <sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);">{{ u.rol }}</sc-raw-td><sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);text-align:right;">{{ u.clientes }}</sc-raw-td><sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);color:var(--muted);">{{ u.estado }}</sc-raw-td><sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted);">{{ u.ult }}</sc-raw-td>
+                      <sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);">{{ u.rol }}</sc-raw-td><sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);text-align:right;"><div>{{ u.clientes }}</div><div style="font-size:11px;color:var(--muted);">{{ u.codigos }}</div></sc-raw-td><sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);color:var(--muted);">{{ u.estado }}</sc-raw-td><sc-raw-td style="padding:9px 10px;border-bottom:1px solid var(--border);text-align:right;color:var(--muted);">{{ u.ult }}</sc-raw-td>
                     </sc-raw-tr></sc-for></sc-raw-tbody>
                   </sc-raw-table>
                 </div>
@@ -2603,19 +2604,31 @@ class Component extends DCLogic {
       ajSync:(s.ajCache || []).map(y => ({l:y.l, f:y.f, n:y.n})),
       ajUmbrales:(s.ajUmbrales || []).map(w => ({l:w.l, d:w.d, v:w.v, o:w.o})), ajUmbralCliente:s.ajUmbralCliente || '',
       ajUsers:users.map(u => ({...u, ini:String(u.nombre || u.email || '').split(' ').map(p => p[0]).slice(0,2).join('')})),
-      ajHasNew:!!nw, ajNoNew:!nw, ajNewD:nw || {nombre:'', email:'', rol:'Cliente'},
-      ajOpenNew:() => this.setState({ajNew:{nombre:'', email:'', rol:'Cliente'}, ajTemp:null}), ajCancelNew:() => this.setState({ajNew:null}),
+      ajHasNew:!!nw, ajNoNew:!nw, ajNewD:nw || {nombre:'', email:'', rol:'Cliente', empresa:''},
+      ajOpenNew:() => this.setState({ajNew:{nombre:'', email:'', rol:'Cliente', empresa:''}, ajTemp:null}), ajCancelNew:() => this.setState({ajNew:null}),
       ajSetN:e => this.setState({ajNew:{...s.ajNew, nombre:e.target.value}}), ajSetE:e => this.setState({ajNew:{...s.ajNew, email:e.target.value}}), ajSetR:e => this.setState({ajNew:{...s.ajNew, rol:e.target.value}}),
-      ajNewOk:!!nw && nw.nombre.trim().length > 2 && /.+@.+\..+/.test(nw.email), ajNewBad:!(!!nw && nw.nombre.trim().length > 2 && /.+@.+\..+/.test(nw.email)),
+      ajSetC:e => this.setState({ajNew:{...s.ajNew, empresa:e.target.value}}),
+      // Un cliente sin número de empresa no puede entrar (el acceso lo exige), así que el alta no
+      // se habilita hasta que el código esté. Son dígitos: los de la asesoría van de 3 a 6.
+      ajNewOk:!!nw && nw.nombre.trim().length > 2 && /.+@.+\..+/.test(nw.email) &&
+        (nw.rol === 'Equipo de ABGA' || /^\d{3,6}$/.test(String(nw.empresa || '').trim())),
+      ajNewBad: !(!!nw && nw.nombre.trim().length > 2 && /.+@.+\..+/.test(nw.email) &&
+        (nw.rol === 'Equipo de ABGA' || /^\d{3,6}$/.test(String(nw.empresa || '').trim()))),
       // Crear el usuario es una llamada de verdad a la plataforma: la contraseña la genera ella y
       // sólo se enseña una vez. Antes se inventaba aquí y no servía para entrar en ninguna parte.
+      // Y el número de empresa va en la misma llamada: sin él, la cuenta creada no podía abrir
+      // ninguna contabilidad (el login exige el código).
       ajCreate:async () => {
         const correo = nw.email.trim(), nombre = nw.nombre.trim();
+        const esCliente = nw.rol !== 'Equipo de ABGA';
+        const codigos = esCliente ? [String(nw.empresa || '').trim()] : [];
         try {
-          const r = await ABGA.pedir('/api/interno/usuarios', {cuerpo:{email:correo, nombre, rol:nw.rol === 'Equipo de ABGA' ? 'interno' : 'cliente'}});
+          const r = await ABGA.pedir('/api/interno/usuarios', {cuerpo:{email:correo, nombre,
+            rol: esCliente ? 'cliente' : 'interno', empresas: codigos}});
           const lista = await ABGA.api.interno.usuarios();
-          this.setState({ajUsers:lista.usuarios, ajNew:null, ajTemp:{email:r.email || correo, pass:r.password || '',
-            aviso:r.password ? (r.aviso || 'Contraseña generada; no se vuelve a mostrar.') : 'El usuario ya existía: se ha actualizado sin cambiar su contraseña.'}});
+          this.setState({ajUsers:lista.usuarios, ajNew:null, ajTemp:{email:(r.email || correo) +
+            (codigos.length ? ' · empresa ' + codigos[0] : ''), pass:r.password || '',
+            aviso:r.password ? (r.aviso || 'Contraseña generada; no se vuelve a mostrar.') : 'El usuario ya existía: se le ha dado acceso a la empresa sin cambiar su contraseña.'}});
         } catch (fallo) { ABGA.aviso('No se ha podido crear el usuario: ' + (fallo.message || fallo), 'error'); }
       },
       ajHasTemp:!!s.ajTemp, ajTempD:s.ajTemp || {email:'', pass:'', aviso:''}, ajCloseTemp:() => this.setState({ajTemp:null})
