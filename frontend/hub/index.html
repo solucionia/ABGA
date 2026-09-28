@@ -436,6 +436,9 @@ input,select,textarea,button{font-family:inherit;}
           </div>
         </sc-if>
       </div>
+      <button sc-camel-on-click="{{ cerrarSesion }}" id="hub-salir" title="Cerrar sesión" style="height:34px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer;white-space:nowrap;" style-hover="background:var(--surface2);">
+        <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg>Salir
+      </button>
       <div title="{{ me.rol }}" style="display:flex;align-items:center;gap:8px;padding-left:4px;">
         <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent-strong);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;">{{ me.ini }}</div>
       </div>
@@ -2257,6 +2260,23 @@ class Component extends DCLogic {
     return {nombre: u.nombre || u.email, ini: ini.toUpperCase(), corto: partes[0] || '',
             rol: u.rol === 'interno' ? 'Equipo de ABGA' : 'Cliente'};
   }
+  /**
+   * Cierra la sesión. `POST /api/logout` borra la cookie; después se comprueba con `/api/yo`
+   * que ya no queda sesión (si la petición falló por red, se avisa en vez de recargar y
+   * encontrarse otra vez dentro), y sólo entonces se recarga para enseñar el acceso.
+   */
+  async salir(){
+    try { await ABGA.api.salir(); } catch (fallo) { /* puede que la sesión ya hubiera caducado */ }
+    try {
+      const quien = await ABGA.api.yo();
+      if (quien && (quien.usuario || quien.email)) {
+        ABGA.aviso('No se ha podido cerrar la sesión. Inténtalo otra vez.', 'error');
+        return;
+      }
+    } catch (fallo) { /* 401: ya no hay sesión, que es lo buscado */ }
+    location.reload();
+  }
+
   renderVals(){
     const s = this.state;
     const motion = (this.props && this.props.animaciones === false) ? 'off' : 'on';
@@ -2286,6 +2306,9 @@ class Component extends DCLogic {
       erpColor: s.erpUltima && (Date.now() - s.erpUltima) < 12 * 3600 * 1000 ? 'var(--ok)' : 'var(--warn)',
 
       toggleSidebar:() => this.setState(x => ({sidebarOpen:!x.sidebarOpen})), collapseIcon: s.sidebarOpen ? ICON.left : ICON.right,
+      // Cerrar sesión: borra la cookie en el backend y vuelve a la pantalla de acceso. Sin este
+      // botón la sesión de 8 horas no se podía soltar desde el hub (el portal antiguo sí lo tenía).
+      cerrarSesion:() => this.salir(),
       search:s.search, setSearch:e => this.setState({search:e.target.value}), onSearchFocus:() => this.setState({searchFocus:true}), onSearchBlur:() => setTimeout(() => this.setState({searchFocus:false}), 150),
       showSearch: s.searchFocus && !!q, searchResults, hasResults: searchResults.length > 0, noResults: !searchResults.length,
       ejercicio:s.ejercicio, setEjercicio:e => this.setState({ejercicio:e.target.value}),
