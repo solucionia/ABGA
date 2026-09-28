@@ -68,16 +68,26 @@ window.ABGA = (function () {
     } catch (fallo) {
       throw ErrorApi('No se ha podido contactar con la plataforma. Comprueba la conexión.', 0);
     }
-    if (respuesta.status === 401) {
-      location.href = '/';
-      throw ErrorApi('La sesión ha caducado.', 401);
-    }
     var tipo = respuesta.headers.get('content-type') || '';
     var datos = tipo.indexOf('application/json') >= 0 ? await respuesta.json() : null;
+    if (respuesta.status === 401) {
+      // El rechazo del login también llega como 401, y con el mensaje del propio backend
+      // («contraseña incorrecta», «empresa sin acceso»…): se enseña ese, no uno nuestro.
+      var mensajeSesion = datos && (datos.error || datos.detail) ? (datos.error || datos.detail) : null;
+      if (ruta === '/api/login') {
+        throw ErrorApi(mensajeSesion || 'No se ha podido iniciar sesión.', 401);
+      }
+      // Sin sesión: el acceso se enseña EN ESTE FRONTAL. Antes se redirigía a `/`, que es el
+      // portal antiguo, y alguien que abría /hub/ se encontraba con otra interfaz.
+      acceso();
+      throw ErrorApi(mensajeSesion || 'Hace falta iniciar sesión.', 401);
+    }
     if (!respuesta.ok) {
       // El backend contesta siempre en JSON con un `detail` ya redactado para el usuario. Si lo
       // que llega es HTML (un proxy, el servidor de ficheros) no se le enseña a nadie: se traduce.
-      var detalle = datos && datos.detail ? datos.detail : null;
+      // Nuestro contrato de error es `{status, error, codigo}`; el `detail` es el de FastAPI
+      // (validación de esquemas). Se lee el que haya para no perder «contraseña incorrecta».
+      var detalle = datos && (datos.error || datos.detail) ? (datos.error || datos.detail) : null;
       if (!detalle) detalle = 'La plataforma ha respondido con un error ' + respuesta.status + '.';
       throw ErrorApi(detalle, respuesta.status);
     }
@@ -300,6 +310,65 @@ window.ABGA = (function () {
     return caja;
   }
 
+  /* ── Acceso ─────────────────────────────────────────────────────────────────────────────── */
+
+  /** Pantalla de acceso del propio frontal. Se construye aquí (no en `index.html`) para no tocar
+   *  la estructura del hub: es una capa encima, igual que los avisos. Al entrar se recarga la
+   *  página con la cookie ya puesta y la aplicación arranca con sesión. */
+  function acceso() {
+    if (document.getElementById('abga-acceso')) return;
+    var caja = document.createElement('div');
+    caja.id = 'abga-acceso';
+    caja.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;' +
+      'justify-content:center;background:var(--surface,#0d1424);';
+    caja.innerHTML =
+      '<form style="width:min(360px,92vw);background:var(--surface2,#ffffff);' +
+      'border:1px solid var(--border,#e3e8f0);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.35);' +
+      'padding:26px 24px 22px;font-family:inherit;">' +
+        '<div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;">ABGA Consultores</div>' +
+        '<h1 style="margin:6px 0 14px;font-size:19px;font-weight:600;color:var(--text);">Plataforma financiera</h1>' +
+        '<label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;">Correo electrónico</label>' +
+        '<input name="email" type="email" required autocomplete="username" ' +
+          'style="width:100%;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;' +
+          'background:var(--surface);color:var(--text);font-size:14px;box-sizing:border-box;">' +
+        '<label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;">Contraseña</label>' +
+        '<input name="password" type="password" required autocomplete="current-password" ' +
+          'style="width:100%;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;' +
+          'background:var(--surface);color:var(--text);font-size:14px;box-sizing:border-box;">' +
+        '<label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;">Número de empresa</label>' +
+        '<input name="empresa" inputmode="numeric" required placeholder="6091" ' +
+          'style="width:100%;height:38px;padding:0 10px;border:1px solid var(--border);border-radius:8px;' +
+          'background:var(--surface);color:var(--text);font-size:14px;box-sizing:border-box;">' +
+        '<div data-error role="alert" style="display:none;margin-top:12px;font-size:12.5px;color:var(--err,#c62828);line-height:1.45;"></div>' +
+        '<button type="submit" style="width:100%;height:40px;margin-top:16px;border:none;border-radius:8px;' +
+          'background:var(--btn,#1a4b8c);color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Entrar</button>' +
+        '<div style="margin-top:12px;font-size:11.5px;color:var(--muted);line-height:1.5;">' +
+          'Cada usuario ve únicamente sus empresas. El número de empresa os lo facilita ABGA.</div>' +
+      '</form>';
+    document.body.appendChild(caja);
+
+    var formulario = caja.querySelector('form');
+    var cajaError = caja.querySelector('[data-error]');
+    var boton = caja.querySelector('button[type=submit]');
+    formulario.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      cajaError.style.display = 'none';
+      boton.disabled = true;
+      boton.textContent = 'Entrando…';
+      try {
+        await api.entrar(formulario.email.value.trim(), formulario.password.value,
+                         formulario.empresa.value.trim());
+        location.reload();       // la cookie ya está puesta: se arranca con sesión
+      } catch (fallo) {
+        // El mensaje viene del propio backend («contraseña incorrecta», «empresa sin acceso»…).
+        cajaError.textContent = fallo.message || 'No se ha podido iniciar sesión.';
+        cajaError.style.display = 'block';
+        boton.disabled = false;
+        boton.textContent = 'Entrar';
+      }
+    });
+  }
+
   /* ── Arranque y carga ────────────────────────────────────────────────────────────────────── */
 
   /** Quién soy, qué empresas veo, con qué ejercicio abre y qué módulos tiene la plataforma. */
@@ -381,6 +450,7 @@ window.ABGA = (function () {
         if (!oferta) aviso('');
       } catch (fallo) {
         oferta = false;
+        if (fallo && fallo.estado === 401) return;   // sin sesión: el acceso ya se está enseñando
         aviso('No se han podido cargar los datos: ' + (fallo.message || fallo), 'error');
       } finally {
         delete enCurso[clave];
@@ -437,6 +507,7 @@ window.ABGA = (function () {
       aviso('');
       cargarPantalla((componente.state && componente.state.screen) || 'inicio');
     } catch (fallo) {
+      if (fallo && fallo.estado === 401) return;   // sin sesión: el acceso ya se está enseñando
       aviso('La plataforma no responde: ' + (fallo.message || fallo), 'error');
     }
   }

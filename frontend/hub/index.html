@@ -2340,7 +2340,9 @@ class Component extends DCLogic {
     return {
       saludo:(() => { const h = new Date().getHours();
         return (h < 13 ? 'Buenos días, ' : h < 20 ? 'Buenas tardes, ' : 'Buenas noches, ') + me.corto; })(), isResp, kpis, chart:{W, H, bars, xl, grid}, hasTip:!!s.tip, tip, chartLeave:() => this.setState({tip:null}),
-      chartTotIa:INT.format(totIa), chartTotHu:INT.format(totHu), chartPct:Math.round(totIa / (totIa + totHu) * 100) + ' %',
+      chartTotIa:INT.format(totIa), chartTotHu:INT.format(totHu),
+      // Sin actividad en 14 días la división es 0/0: no se pinta un porcentaje inventado.
+      chartPct:(totIa + totHu) ? Math.round(totIa / (totIa + totHu) * 100) + ' %' : '—',
       tareas, hasTareas:tareas.length > 0, noTareas:!tareas.length, tareasCount:tareas.length, tareasScope: isResp ? 'Todo el equipo' : 'Asignadas a ti',
       feed, venc
     };
@@ -2454,12 +2456,13 @@ class Component extends DCLogic {
     const calc = idx => { const r = {}; INF_PYG.forEach(row => { if (row[1] !== null) r[row[3]] = row[idx] * f; }); r.mb = r.v + r.ap; r.ebitda = r.mb + r.pe + r.ot; r.ebit = r.ebitda + r.am; r.bai = r.ebit + r.fi; if (r.is === undefined) r.is = -(r.bai > 0 ? r.bai * 0.25 : 0); if (r.neto === undefined) r.neto = r.bai + r.is; return r; };
     const cur = calc(1), prv = calc(2);
     const BOLD = ['mb','ebitda','ebit','bai','neto'];
-    const pygRows = INF_PYG.map(([l, , , k], i) => { const a = cur[k], b = prv[k], d = b ? (a - b) / Math.abs(b) * 100 : 0, bold = BOLD.includes(k); return {l, a:eur(a), b:eur(b), d:pct(d), dFg: a >= b ? 'var(--ok)' : 'var(--err)', sv:n1(a / cur.v * 100) + ' %', fw: bold ? 600 : 400, rowBg: bold ? 'var(--accent-soft)' : 'transparent', aFg: a < 0 ? 'var(--err)' : 'var(--text)', delay:(i * 30) + 'ms'}; });
+    const pygRows = INF_PYG.map(([l, , , k], i) => { const a = cur[k], b = prv[k], d = b ? (a - b) / Math.abs(b) * 100 : 0, bold = BOLD.includes(k); return {l, a:eur(a), b:eur(b), d:pct(d), dFg: a >= b ? 'var(--ok)' : 'var(--err)', sv: cur.v ? n1(a / cur.v * 100) + ' %' : '—',   /* sin cifra de negocios: no se divide entre cero */ fw: bold ? 600 : 400, rowBg: bold ? 'var(--accent-soft)' : 'transparent', aFg: a < 0 ? 'var(--err)' : 'var(--text)', delay:(i * 30) + 'ms'}; });
     const bal = w => { const B = INF_BAL[w], sc = k => B[k] * fb, pn = INF_BAL.pn0[w] * fb + (w === 'cur' ? cur.neto : prv.neto); const tot = sc('anc') + sc('ex') + sc('de') + sc('te'); return {anc:sc('anc'), ex:sc('ex'), de:sc('de'), te:sc('te'), tot, pn, pnc:sc('pnc'), pc:sc('pc'), pt:pn + sc('pnc') + sc('pc')}; };
     const bc = bal('cur'), bp = bal('prev');
     const balRows = [['Activo no corriente','anc',false],['Existencias','ex',false],['Deudores comerciales','de',false],['Tesorería','te',false],['Total activo','tot',true],['Patrimonio neto','pn',false],['Pasivo no corriente','pnc',false],['Pasivo corriente','pc',false],['Total patrimonio neto y pasivo','pt',true]].map(([l, k, bold], i) => ({l, a:eur(bc[k]), b:eur(bp[k]), d: bp[k] ? pct((bc[k] / bp[k] - 1) * 100) : (bc[k] ? '—' : '0 %'), /* sin base: 0/0 salía «NaN %» */ fw: bold ? 600 : 400, bt: i === 5 ? '2px solid var(--border)' : '1px solid var(--border)', rowBg: bold ? 'var(--accent-soft)' : 'transparent'}));
     const segH = 180, segA = [['anc','Activo no corriente','var(--accent-strong)'],['ex','Existencias','var(--accent)'],['de','Deudores','#6fa3d8'],['te','Tesorería','var(--ai)']], segP = [['pn','Patrimonio neto','var(--ok)'],['pnc','Pasivo no corriente','var(--warn)'],['pc','Pasivo corriente','#d9a55a']];
-    const stack = arr => { let y = 0; return arr.map(([k, l, col]) => { const hh = bc[k] / bc.tot * segH; const o = {h:hh.toFixed(1) + 'px', l, col, pct:Math.round(bc[k] / bc.tot * 100) + ' %', show:hh > 22}; y += hh; return o; }); };
+    /* `bc.tot` = 0 cuando el ejercicio no está leído: sin esta guarda salía «NaN %» en los siete bloques. */
+    const stack = arr => { let y = 0; return arr.map(([k, l, col]) => { const hh = bc.tot ? bc[k] / bc.tot * segH : 0; const o = {h:hh.toFixed(1) + 'px', l, col, pct: bc.tot ? Math.round(bc[k] / bc.tot * 100) + ' %' : '—', show:hh > 22}; y += hh; return o; }); };
     const R = (b, p) => {
       const ac = b.ex + b.de + b.te, pr = p === 'c' ? cur : prv;
       return {liq:ac / b.pc, acida:(b.de + b.te) / b.pc, end:(b.pnc + b.pc) / b.pn, me:pr.ebitda / pr.v * 100, mn:pr.neto / pr.v * 100, roe:pr.neto * (365 / P.dias) / b.pn * 100, pmc:b.de / (pr.v * 1.21) * P.dias};
@@ -2475,7 +2478,15 @@ class Component extends DCLogic {
       ['pmc','Periodo medio de cobro','Deudores / ventas con IVA × días', v => Math.round(v) + ' días', v => v <= 60 ? 'ok' : v <= 90 ? 'warn' : 'err']
     ];
     const SL = {ok:'Favorable', warn:'Vigilar', err:'Desfavorable'};
-    const ratios = RD.map(([k, l, fm, fmt, sem], i) => { const t = sem(rc[k]); return {l, fm, v:fmt(rc[k]), p:fmt(rp[k]), sem:SL[t], fg:T(t).fg, bg:T(t).bg, delay:(i * 50) + 'ms'}; });
+    // Sin datos leídos el ratio no existe: ni se pinta un número roto (0/0 = NaN) ni se juzga
+    // «Desfavorable», que sería un veredicto sobre datos que no están.
+    const ratios = RD.map(([k, l, fm, fmt, sem], i) => {
+      if (!Number.isFinite(rc[k]) || !Number.isFinite(rp[k])) {
+        return {l, fm, v:'—', p:'—', sem:'Sin datos', fg:T('muted').fg, bg:'transparent', delay:(i * 50) + 'ms'};
+      }
+      const t = sem(rc[k]);
+      return {l, fm, v:fmt(rc[k]), p:fmt(rp[k]), sem:SL[t], fg:T(t).fg, bg:T(t).bg, delay:(i * 50) + 'ms'};
+    });
     const ms = P.meses, sw = ms.reduce((a, m) => a + SEAS[m], 0);
     const mv = ms.map((m, i) => ({m, a:(P.mensual && P.mensual[i] ? P.mensual[i].ingresos : 0), b:(P.mensual && P.mensual[i] ? P.mensual[i].gastos : 0)}));
     // `|| 1`: mientras la serie está vacía (primera pintura, antes de que el traductor traiga los
@@ -2503,7 +2514,12 @@ class Component extends DCLogic {
     const tPts = tes.map((v, i) => ({x:tX(i).toFixed(1), y:tY(v).toFixed(1), t:MES_C[ms[i]] + ': ' + eur(v), lx:tX(i).toFixed(1), ly:TH - 6, l:MES_C[ms[i]], delay:(300 + i * 60) + 'ms'}));
     const tGrid = [0, 0.5, 1].map(g => ({y:tY(tmax * g).toFixed(1), label:fmtC(tmax * g), x1:tpl, x2:TW - 10}));
     const dv = prv.v ? (cur.v / prv.v - 1) * 100 : 0; /* sin ejercicio anterior, sin Infinity */
-    const auto = 'En ' + P.l.toLowerCase() + ', la cifra de negocios alcanza ' + eur(cur.v) + ', un ' + pct(dv) + ' respecto a ' + P.prev.toLowerCase() + '. El margen bruto se sitúa en el ' + n1(cur.mb / cur.v * 100) + ' % y el EBITDA en ' + eur(cur.ebitda) + ' (' + n1(rc.me) + ' % sobre ventas). El resultado del periodo es de ' + eur(cur.neto) + '. La liquidez (' + n2(rc.liq) + ') ' + (rc.liq >= 1.5 ? 'es holgada' : 'requiere seguimiento') + ' y el periodo medio de cobro es de ' + Math.round(rc.pmc) + ' días' + (rc.pmc > 60 ? ', por encima del objetivo de 60 días.' : '.');
+    // Con el ejercicio sin leer no hay cifras de qué hablar: el comentario no se redacta (sería
+    // inventar márgenes y liquidez) y se dice exactamente eso.
+    const hayCifras = !!cur.v && Number.isFinite(rc.liq) && Number.isFinite(rc.pmc);
+    const auto = hayCifras
+      ? 'En ' + P.l.toLowerCase() + ', la cifra de negocios alcanza ' + eur(cur.v) + ', un ' + pct(dv) + ' respecto a ' + P.prev.toLowerCase() + '. El margen bruto se sitúa en el ' + n1(cur.mb / cur.v * 100) + ' % y el EBITDA en ' + eur(cur.ebitda) + ' (' + n1(rc.me) + ' % sobre ventas). El resultado del periodo es de ' + eur(cur.neto) + '. La liquidez (' + n2(rc.liq) + ') ' + (rc.liq >= 1.5 ? 'es holgada' : 'requiere seguimiento') + ' y el periodo medio de cobro es de ' + Math.round(rc.pmc) + ' días' + (rc.pmc > 60 ? ', por encima del objetivo de 60 días.' : '.')
+      : 'Sin datos del ejercicio seleccionado: todavía no está leído, así que aquí no se redacta ningún comentario.';
     const coment = s.infComent !== null ? s.infComent : auto;
     const SEC = [['resumen','Resumen de indicadores'],['pyg','Cuenta de pérdidas y ganancias'],['balance','Balance de situación'],['ratios','Ratios'],['graficos','Gráficos'],['comentario','Comentario del asesor']];
     const secs = SEC.map(([k, l]) => ({k, l, on:s.infSec[k], onChange:() => this.setState(x => ({infSec:{...x.infSec, [k]:!x.infSec[k]}}))}));
