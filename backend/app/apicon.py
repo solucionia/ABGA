@@ -56,6 +56,33 @@ class ErrorErp(RuntimeError):
         self.status = status
 
 
+def _fallo_erp(r: httpx.Response, ejercicio: int) -> str:
+    """El error que apiCON devuelve, si lo trae — no sólo el código.
+
+    Un «HTTP 400 al pedir los apuntes» no dice nada a nadie. apiCON, en cambio, explica el
+    motivo en el cuerpo (`Message` / `ExceptionMessage`) y el caso que importa es éste: hay
+    empresas de **Contabilidad de Estimaciones/Autónomos** a las que este contrato no las sirve.
+    Si el motivo se tira, el equipo de ABGA sólo ve «está roto» en vez de «hay que pedírselo a
+    Diez Software».
+    """
+    cuerpo = ""
+    try:
+        j = r.json()
+        msg = str(j.get("Message") or "")
+        exc = str(j.get("ExceptionMessage") or "")
+        # Los 500 de apiCON traen «An error has occurred.» en `Message` y el motivo real en
+        # `ExceptionMessage`: si sólo se mira el primero, el error vuelve a quedar mudo.
+        cuerpo = exc if exc and (not msg or msg.startswith("An error has occurred")) else (msg or exc)
+    except Exception:
+        cuerpo = (r.text or "").strip()
+    cuerpo = " ".join(cuerpo.split())[:260]
+    base = f"El ERP devolvió HTTP {r.status_code} al pedir los apuntes de {ejercicio}"
+    if "Estimaciones/Autónomos" in cuerpo:
+        return (f"{base}: la empresa es de Contabilidad de Estimaciones/Autónomos y apiCON "
+                "no la sirve con este contrato (lo tiene que habilitar Diez Software).")
+    return f"{base} — {cuerpo}" if cuerpo else f"{base}."
+
+
 class ClienteApicon:
     def __init__(self, cfg=None) -> None:
         self.cfg = cfg or cargar_config()
@@ -195,8 +222,7 @@ class ClienteApicon:
                             headers={"Authorization": f"Bearer {self.token(empresa, forzar=True)}",
                                      "Accept": "application/json"})
         if r.status_code != 200:
-            raise ErrorErp(f"El ERP devolvió HTTP {r.status_code} al pedir los apuntes de {ejercicio}.",
-                           status=r.status_code)
+            raise ErrorErp(_fallo_erp(r, ejercicio), status=r.status_code)
         return r.json()
 
     @staticmethod
