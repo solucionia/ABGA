@@ -413,7 +413,7 @@ input,select,textarea,button{font-family:inherit;}
       <div style="flex:1;"></div>
       <label for="top-ej" style="font-size:12px;color:var(--muted);">Ejercicio</label>
       <sc-raw-select id="top-ej" value="{{ ejercicio }}" sc-camel-on-change="{{ setEjercicio }}" style="height:34px;padding:0 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:13px;">
-        <option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option>
+      <sc-for list="{{ annosOpciones }}" as="a" hint-placeholder-count="3"><option value="{{ a }}">{{ a }}</option></sc-for>
       </sc-raw-select>
       
       <button sc-camel-on-click="{{ toggleTheme }}" title="Cambiar tema" style="height:34px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;cursor:pointer;" style-hover="background:var(--surface2);">
@@ -2271,7 +2271,8 @@ class Component extends DCLogic {
       return {label:m.label, iconD:ICON[m.icon], onClick:() => this.go(m.key), bg: act ? 'rgba(74,144,217,0.22)' : 'transparent', fg: act ? '#ffffff' : '#b3c3d9', showLabel:s.sidebarOpen, showBadge:s.sidebarOpen && !!badges[m.key], badge:badges[m.key] || 0, dotShow:!s.sidebarOpen && !!badges[m.key]};
     });
     const q = s.search.trim().toLowerCase();
-    const searchResults = q ? CLIENTES.filter(c => c.nombre.toLowerCase().includes(q) || c.nif.toLowerCase().includes(q)).slice(0,6).map(c => ({nombre:c.nombre, nif:c.nif, ciudad:c.ciudad, onClick:() => this.openFicha(c.id)})) : [];
+    // El despacho busca por código de empresa tanto como por nombre o NIF.
+    const searchResults = q ? CLIENTES.filter(c => c.nombre.toLowerCase().includes(q) || (c.nif || '').toLowerCase().includes(q) || String(c.id).toLowerCase().includes(q)).slice(0,6).map(c => ({nombre:c.nombre, nif:String(c.id) + (c.nif ? ' · ' + c.nif : ''), ciudad:c.ciudad || '', onClick:() => this.openFicha(c.id)})) : [];
     const delivered = ENTREGADOS.includes(s.screen);
     const mod = MODULOS.find(m => m.key === s.screen);
     return {
@@ -2287,6 +2288,7 @@ class Component extends DCLogic {
       search:s.search, setSearch:e => this.setState({search:e.target.value}), onSearchFocus:() => this.setState({searchFocus:true}), onSearchBlur:() => setTimeout(() => this.setState({searchFocus:false}), 150),
       showSearch: s.searchFocus && !!q, searchResults, hasResults: searchResults.length > 0, noResults: !searchResults.length,
       ejercicio:s.ejercicio, setEjercicio:e => this.setState({ejercicio:e.target.value}),
+      annosOpciones:(s.annosOpciones && s.annosOpciones.length) ? s.annosOpciones : [2026, 2025, 2024],
       notifOpen:s.notifOpen, toggleNotif:() => this.setState(x => ({notifOpen:!x.notifOpen})), hasNotifCount:!s.notifRead, notifCount:NOTIFS.length,
       notifs:NOTIFS.map(n => ({...n, fg:T(n.tone).fg, op: s.notifRead ? .6 : 1})), markAllRead:() => this.setState({notifRead:true}),
       sInicio:s.screen === 'inicio', sConc:s.screen === 'conciliacion', sDup:s.screen === 'duplicados', sEnv:s.screen === 'envios', sProy:s.screen === 'proyecciones', sCA:s.screen === 'memoria', sInf:s.screen === 'informe',
@@ -2720,7 +2722,7 @@ class Component extends DCLogic {
     // campo de notas de la empresa y el estado del análisis de la cartera. Lo que la plataforma no
     // guarda (domicilio, forma jurídica, CNAE, IVA, plantilla, facturación, asesor, contacto) se
     // pinta con raya, nunca con un ejemplo.
-    const cliRows = CLIENTES.filter(c => !q || c.nombre.toLowerCase().includes(q) || c.nif.toLowerCase().includes(q) || c.ciudad.toLowerCase().includes(q)).map((c, i) => ({nombre:c.nombre, nif:c.nif || '—', ciudad:c.ciudad || '—', asesor:c.asesor || '—', fact:c.fact == null ? '—' : eur(c.fact), estado:EL[c.estado] || EL.na, fg:T(c.estado).fg, bg:T(c.estado).bg, onClick:() => this.openFicha(c.id), rowBg: i % 2 ? 'var(--surface2)' : 'var(--surface)'}));
+    const cliRows = CLIENTES.filter(c => !q || c.nombre.toLowerCase().includes(q) || (c.nif || '').toLowerCase().includes(q) || (c.ciudad || '').toLowerCase().includes(q) || String(c.id).toLowerCase().includes(q)).map((c, i) => ({nombre:c.nombre, nif:c.nif || '—', ciudad:c.ciudad || '—', asesor:c.asesor || '—', fact:c.fact == null ? '—' : eur(c.fact), estado:EL[c.estado] || EL.na, fg:T(c.estado).fg, bg:T(c.estado).bg, onClick:() => this.openFicha(c.id), rowBg: i % 2 ? 'var(--surface2)' : 'var(--surface)'}));
     const c = (s.fichaId ? cli(s.fichaId) : CLIENTES[0]) || {id:null, nombre:'', nif:'', servicios:'', forma:'', cnae:'', ciudad:'', iva:'', empleados:0, alta:'', asesor:'', fact:null, contacto:'', email:'', telefono:'', estado:'na', cuentas:[], cartera:null};
     const TABS = [['datos','Datos'],['documentos','Documentos'],['envios','Envíos'],['impuestos','Impuestos'],['cuentas','Cuentas anuales']];
     const cEnv = s.envios.filter(e => e.cli === c.id);

@@ -500,7 +500,12 @@ window.ABGA = (function () {
       });
       var primero = estado.empresas.length ? estado.empresas[0].cod_empresa : null;
       parche({
-        ejercicio: String(estado.ejercicio), role: estado.interno ? 'asesor' : 'cliente',
+        ejercicio: String(estado.ejercicio),
+        // Los años del selector de la cabecera salen del backend (los que tiene esa empresa),
+        // no de una lista fija: hay empresas sin 2026 y empresas con ejercicios anteriores.
+        annosOpciones: (estado.annosDisponibles && estado.annosDisponibles.length)
+          ? estado.annosDisponibles : [2026, 2025, 2024],
+        role: estado.interno ? 'asesor' : 'cliente',
         infCliente: primero, concCliente: primero, proyCliente: primero,
         erpHay: !!estado.erpConfigurado, erpUltima: ultimaLectura || null
       });
@@ -520,22 +525,54 @@ window.ABGA = (function () {
     else if (typeof cambio === 'function') {
       try { claves = Object.keys(cambio(anterior) || {}); } catch (fallo) { return; }
     } else return;
-    var esCambio = claves.some(function (k) { return k === 'screen' || k === 'ejercicio' || k.indexOf('Cliente') >= 0; });
+    var esCambio = claves.some(function (k) {
+      // `fichaId` es el código de la empresa: abrir una ficha desde el buscador de la cabecera o
+      // desde la pantalla Clientes cambia de empresa igual que un selector «…Cliente».
+      return k === 'screen' || k === 'ejercicio' || k === 'fichaId' || k.indexOf('Cliente') >= 0;
+    });
     if (!esCambio) return;
     var pantalla = claves.indexOf('screen') >= 0 ? cambio.screen : aplicacion.state.screen;
     // Cada pantalla del hub trabaja con su propia empresa (la llama «cliente»). OJO: hay claves
     // terminadas en «Cliente» que traen el NOMBRE (p. ej. `ajUmbralCliente`): si se cogiera ese
     // valor, la empresa de la sesión dejaría de ser un código y todas las llamadas siguientes
     // contestarían 404. Sólo se cambia cuando el valor es el código de una empresa conocida.
-    if (claves.indexOf('screen') < 0 && anterior) {
+    var cambiaEmpresa = null;
+    if (anterior) {
+      // Sin el guard `screen < 0`: al abrir una ficha, `openFicha` manda pantalla y `fichaId` en
+      // el mismo cambio y la empresa no se llegaba a cambiar nunca.
       claves.forEach(function (k) {
-        if (k.indexOf('Cliente') < 0 || anterior[k] === cambio[k] || !cambio[k]) return;
+        var esEmpresa = k.indexOf('Cliente') >= 0 || k === 'fichaId';
+        if (!esEmpresa || anterior[k] === cambio[k] || !cambio[k]) return;
         var cod = String(cambio[k]);
         var conocida = (estado.empresas || []).some(function (e) { return String(e.cod_empresa) === cod; });
-        if (conocida) estado.empresa = cod;
+        if (conocida && cod !== estado.empresa) { estado.empresa = cod; cambiaEmpresa = cod; }
       });
     }
+    if (cambiaEmpresa) {
+      // Antes de repintar se le pregunta al backend qué ejercicios tiene la empresa nueva: si el
+      // que estaba abierto no existe en ella, se abre el más reciente que sí (y si está leído,
+      // mejor), en vez de enseñar vacío el año de la empresa anterior.
+      ajustarEjercicio(cambiaEmpresa).then(function () { cargarPantalla(pantalla, true); });
+      return;
+    }
     cargarPantalla(pantalla);
+  }
+
+  /** Ejercicios de la empresa a la que acabamos de cambiar; lo decide el backend. */
+  async function ajustarEjercicio(cod) {
+    try {
+      var r = await api.ejercicios(cod);
+      var annos = (r.ejercicios || []).map(function (a) { return Number(a.year || a); })
+        .filter(Boolean).sort(function (a, b) { return b - a; });
+      estado.annosDisponibles = annos;
+      parche({ annosOpciones: annos });
+      if (!annos.length) return;
+      var frescos = Object.keys(estado.cache[cod] || {}).map(Number).filter(function (a) {
+        return (Date.now() - estado.cache[cod][a]) < estado.ttl * 1000;
+      });
+      if (frescos.length) estado.ejercicio = Math.max.apply(null, frescos);
+      else if (annos.indexOf(Number(estado.ejercicio)) < 0) estado.ejercicio = annos[0];
+    } catch (fallo) { /* sin catálogo: se mantiene el ejercicio abierto */ }
   }
 
   return {
