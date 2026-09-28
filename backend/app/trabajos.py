@@ -106,6 +106,18 @@ def trabajo_en_curso(cod_empresa: str, year: int) -> Trabajo | None:
     return _de_fila(fila) if fila else None
 
 
+def cargas_en_curso() -> int:
+    """Cuántas lecturas al ERP están corriendo ahora mismo.
+
+    Sólo sirve para no apilarlas: una lectura son cientos de peticiones y el ERP contesta 429
+    si se le machaca, así que el refresco automático espera a que termine la anterior en lugar
+    de lanzar otra al lado.
+    """
+    fila = cache.conectar().execute(
+        "SELECT COUNT(*) FROM trabajos WHERE tipo='carga' AND estado='en_curso'").fetchone()
+    return int(fila[0] or 0)
+
+
 def marcar_interrumpidos() -> int:
     """Al arrancar: lo que quedó «en curso» es de un proceso que ya no existe. Devuelve cuántos."""
     con = cache.conectar()
@@ -129,16 +141,24 @@ def _arrancar(t: Trabajo, correr: Any) -> Trabajo:
 
 
 def lanzar_carga(cod_empresa: str, year: int, *, modulos_pedidos: list[str] | None = None,
-                 forzar: bool = False, email: str | None = None) -> Trabajo:
-    """Carga (o recarga) los ejercicios que necesitan los módulos pedidos."""
+                 forzar: bool = False, email: str | None = None,
+                 years: list[int] | None = None) -> Trabajo:
+    """Carga (o recarga) los ejercicios que necesitan los módulos pedidos.
+
+    Con `years` se refrescan **sólo** esos ejercicios: es lo que usa el refresco automático de
+    la caché caducada, que no debe ponerse a leer cinco años porque alguien abrió un panel.
+    """
     existente = trabajo_en_curso(cod_empresa, year)
     if existente:
         return existente
 
-    nombres = modulos_pedidos or [d.nombre for d in modulos.listar_todos() if d.disponible] or ["pyg"]
-    anios: set[int] = set()
-    for n in nombres:
-        anios.update(modulos.anios_necesarios(n, int(year)))
+    if years:
+        anios = {int(y) for y in years}
+    else:
+        nombres = modulos_pedidos or [d.nombre for d in modulos.listar_todos() if d.disponible] or ["pyg"]
+        anios = set()
+        for n in nombres:
+            anios.update(modulos.anios_necesarios(n, int(year)))
 
     t = Trabajo(id=uuid.uuid4().hex[:12], tipo="carga", cod_empresa=str(cod_empresa), year=int(year),
                 email=email or "")

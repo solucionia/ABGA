@@ -45,6 +45,10 @@ class Config:
     # Modo solo-caché: NUNCA se llama al ERP; se sirve de la caché ignorando el TTL. Es lo que
     # debe estar puesto en una demo o una previsualización, para no tocar el ERP en producción.
     solo_cache: bool = False
+    # Caché caducada: se sirve la que hay y el ejercicio se refresca detrás, en segundo plano,
+    # en vez de dejar la petición esperando al ERP (una lectura son cientos de consultas y tarda
+    # minutos). `0` desactiva el refresco automático (la petición sigue sirviendo lo caducado).
+    refresco_automatico: bool = True
     firma: str = "ABGA Consultores · farias@abgaconsultores.com · 913 788 740"
     # Ritmo hacia el ERP: el endpoint responde 429 si se le machaca.
     pausa_entre_peticiones: float = 1.5
@@ -108,6 +112,11 @@ def cargar_config(ruta_env: Path | None = None) -> Config:
         cache_db = RAIZ_PROYECTO / cache_db
     cache_db.parent.mkdir(parents=True, exist_ok=True)
 
+    # Refresco de la caché caducada (ver `Config.refresco_automatico`): por defecto sí, y se
+    # apaga con REFRESCO_AUTOMATICO=0 en entornos donde no quieran leerse el ERP.
+    apagado = {"0", "false", "no", "off"}
+    refresco = env.get("REFRESCO_AUTOMATICO", "1").strip().lower() not in apagado
+
     return Config(
         apicon_base=env.get("APICON_BASE", "http://apicon.diezsoftware.com"),
         apicon_username=env["APICON_USERNAME"],
@@ -123,4 +132,5 @@ def cargar_config(ruta_env: Path | None = None) -> Config:
         token_ttl_min=int(env.get("TOKEN_TTL_MIN", "480")),
         demo_auto_login=env.get("DEMO_AUTO_LOGIN", "").strip().lower(),
         solo_cache=env.get("APICON_SOLO_CACHE", "").strip().lower() in {"1", "true", "si", "sí", "yes"},
+        refresco_automatico=refresco,
     )

@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import alertas, apicon, cache, db, informes, modulos, observabilidad
+from . import alertas, apicon, cache, config, db, informes, modulos, observabilidad
 from .ledger import Linea, detectar_cierre, fmt, lineas_de_asientos
 from .modulos import Definicion
 
@@ -88,17 +88,25 @@ def _aviso_cierre(datos: dict[str, Any], traza: dict[str, Any]) -> None:
 
 
 def cargar_ejercicios(cod_empresa: str, years: list[int], *, forzar: bool = False,
-                      ttl: int | None = None) -> tuple[dict[int, list[Linea]], dict[str, Any]]:
+                      ttl: int | None = None, caducas: bool = True,
+                      ) -> tuple[dict[int, list[Linea]], dict[str, Any]]:
     """Trae los ejercicios pedidos (caché primero) y los convierte en líneas contables.
 
     Si el ejercicio está **cerrado**, se apartan el asiento de regularización y el de cierre
     (ver `ledger.detectar_cierre`): no son actividad y, si se suman, dejan los gastos e ingresos
     a cero y el panel de un ejercicio cerrado aparece vacío sin explicar por qué.
+
+    **La caché caducada también sirve**: si el ejercicio ya se leyó una vez pero pasó el TTL,
+    se devuelve tal cual —con `caducado: true` en su `meta`— y su refresco se programa detrás,
+    en segundo plano. Esperar al ERP dentro de la petición dejaba el panel parado dos minutos
+    para enseñar un dato que ya estaba en la base. Con `caducas=False` se recupera el
+    comportamiento de espera (lo usa quien necesita el dato recién leído, no un panel).
     """
     cli = apicon.cliente()
     por_anio: dict[int, list[Linea]] = {}
     traza: dict[str, Any] = {"ejercicios": {}, "desde_cache": True, "segundos_erp": 0.0,
-                             "cerrados": [], "omitidos_por_alta": []}
+                             "cerrados": [], "omitidos_por_alta": [], "caducados": []}
+    caducados: list[int] = []
 
     # No se piden ejercicios anteriores al alta de la empresa: no existen, el ERP los devuelve
     # vacíos y hacían fallar a los módulos largos (autodespro pide 5 años, proyecciones 4) en
@@ -109,7 +117,16 @@ def cargar_ejercicios(cod_empresa: str, years: list[int], *, forzar: bool = Fals
         years = sorted(y for y in years if y >= int(alta))
 
     for y in years:
-        info = cli.apuntes(cod_empresa, y, forzar=forzar, ttl=ttl)
+        info: dict[str, Any] | None = None
+        if caducas and not forzar:
+            info = cache.leer_apuntes(cod_empresa, y, ttl=ttl)
+            if not info:
+                viejo = cache.leer_apuntes(cod_empresa, y, ttl=-1)
+                if viejo:
+                    info = {**viejo, "caducado": True}
+                    caducados.append(y)
+        if info is None:
+            info = cli.apuntes(cod_empresa, y, forzar=forzar, ttl=ttl)
         crudo = lineas_de_asientos(info["asientos"])
         cierre = detectar_cierre(crudo)
         por_anio[y] = cierre["lineas_operativas"] if cierre["cerrado"] else crudo
@@ -117,7 +134,8 @@ def cargar_ejercicios(cod_empresa: str, years: list[int], *, forzar: bool = Fals
             traza["cerrados"].append(y)
         traza["ejercicios"][y] = {
             "n_asientos": info["n_asientos"], "n_lineas": info["n_lineas"],
-            "desde_cache": bool(info.get("desde_cache")), "cobertura": info.get("cobertura"),
+            "desde_cache": bool(info.get("desde_cache")),
+            "caducado": bool(info.get("caducado")), "cobertura": info.get("cobertura"),
             "actualizado": info.get("actualizado"), "segundos": info.get("segundos"),
             "resultados_totales": info.get("resultados_totales"),
             "cerrado": cierre["cerrado"], "resultado_libro": cierre["resultado_libro"],
@@ -126,7 +144,35 @@ def cargar_ejercicios(cod_empresa: str, years: list[int], *, forzar: bool = Fals
         if not info.get("desde_cache"):
             traza["desde_cache"] = False
             traza["segundos_erp"] += float(info.get("segundos") or 0)
+    traza["caducados"] = sorted(caducados)
+    if caducados and not forzar:
+        _refrescar_despues(cod_empresa, caducados)
     return por_anio, traza
+
+
+def _refrescar_despues(cod_empresa: str, years: list[int]) -> None:
+    """Programa el refresco de los ejercicios que acaban de servirse con la caché caducada.
+
+    Se manda **un solo trabajo con todos ellos**, leído en serie: una lectura son cientos de
+    peticiones y el ERP contesta 429 si se le machaca, así que aquí no se apilan hilos. Tampoco
+    en un entorno sin ERP. Si ya hay una carga en marcha, ésta se queda para la próxima
+    apertura —el dato caducado ya está servido, no se pierde nada—.
+    """
+    from . import trabajos  # import local: `trabajos` importa `servicio`
+
+    cfg = config.cargar_config()
+    if cfg.solo_cache or not cfg.refresco_automatico:
+        return
+    pendientes = sorted({int(a) for a in years})
+    if not pendientes:
+        return
+    if trabajos.trabajo_en_curso(cod_empresa, pendientes[0]):
+        return
+    if trabajos.cargas_en_curso():
+        log.info("[refresco] %s/%s se pospone: ya hay una lectura al ERP en curso",
+                 cod_empresa, pendientes)
+        return
+    trabajos.lanzar_carga(cod_empresa, pendientes[0], years=pendientes)
 
 
 def _veredicto_cobertura(traza: dict[str, Any]) -> str:
@@ -302,6 +348,7 @@ def _ejecutar(nombre_modulo: str, *, cod_empresa: str, year: int, params: dict[s
             "empresa": ctx["empresa"], "cod_empresa": ctx["cod_empresa"], "year": ctx["year"],
             "segundos": round(segundos, 2), "desde_cache": bool(traza["desde_cache"]),
             "segundos_erp": round(traza["segundos_erp"], 2), "ejercicios": traza["ejercicios"],
+            "caducados": traza.get("caducados") or [],
             "cerrados": traza.get("cerrados") or [],
             "faltantes": sorted(int(y) for y in (traza.get("faltantes") or [])),
             "generado": cache.ahora(),
@@ -322,6 +369,7 @@ def datos_dashboard(cod_empresa: str, year: int, *, forzar: bool = False) -> dic
     return {"status": "ok", "data": datos, "meta": {
         "empresa": ctx["empresa"], "cod_empresa": ctx["cod_empresa"], "year": ctx["year"],
         "desde_cache": bool(traza["desde_cache"]), "ejercicios": traza["ejercicios"],
+        "caducados": traza.get("caducados") or [],
         "cerrados": traza.get("cerrados") or [],
         "generado": cache.ahora(),
     }}

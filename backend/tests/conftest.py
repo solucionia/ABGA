@@ -37,6 +37,9 @@ ENTORNO_DE_PRUEBA: dict[str, str] = {
     "APICON_EMPRESA_DEFECTO": "6091",
     "SECRET_KEY": "clave-de-firma-solo-para-pruebas-y-bien-larga",
     "TOKEN_TTL_MIN": "60",
+    # El refresco automático de la caché caducada lanza hilos que leen al ERP: fuera de las
+    # pruebas (que no lo necesitan) y encendido a propósito sólo en la que lo comprueba.
+    "REFRESCO_AUTOMATICO": "0",
 }
 
 EMPRESA = "6091"

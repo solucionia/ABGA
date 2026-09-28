@@ -234,13 +234,14 @@ window.ABGA = (function () {
         });
         return respuesta.data || {};
       },
-      /** ¿El ejercicio está ya leído y sin caducar? Si no, la pantalla no pide informes: pedirlos
-       *  son cientos de consultas al ERP del cliente. */
+      /** ¿El ejercicio está leído? La caché **caducada también sirve**: el backend la devuelve
+       *  al momento y refresca detrás, en segundo plano, así que el panel no se queda esperando
+       *  al ERP por un dato que ya está en la base. Lo que no se puede pedir a ciegas es un
+       *  ejercicio que nunca se ha leído: eso sí son cientos de consultas (ahí se ofrece el
+       *  botón de «Traer del ERP»). */
       hayCache: function (anio) {
         var a = Number(anio || estado.ejercicio);
-        var leido = (estado.cache[estado.empresa] || {})[a];
-        if (!leido) return false;
-        return (Date.now() - leido) < estado.ttl * 1000;
+        return !!(estado.cache[estado.empresa] || {})[a];
       },
       /** Un aviso que se queda en pantalla (no lo borra el cargador): para decir que algo del
        *  diseño no tiene datos detrás todavía. */

@@ -39,6 +39,14 @@ ABGA.registrar('inicio', async function (ctx) {
   }
 
   var dash = await ctx.api.dashboard(empresa, anio);
+  // Caché caducada: el panel sale igual (con los datos que hay) y el backend está refrescando
+  // el ejercicio detrás. Se dice en pantalla, porque el cliente tiene que saber de cuándo son
+  // los datos que está mirando.
+  var caducados = ((dash.meta || {}).caducados) || [];
+  if (caducados.length) {
+    ctx.avisoFijo('Datos del ejercicio ' + caducados.join(', ') + ' leídos de la caché: ' +
+      'el ERP se está actualizando en segundo plano y entrarán solos.');
+  }
   var analisis = await ctx.api.analisis(empresa, anio);
   var d = dash.data || {};
   var a = analisis.data || {};
